@@ -18,7 +18,15 @@
 		}
 
 		protected function expectedCallback($times = 1, $args = [], string $name = 'callback') {
-			$mock       = $this->getMockBuilder('stdClass')->addMethods([$name])->getMock();
+
+			$mockBuilder = $this->getMockBuilder('stdClass');
+
+			if (is_callable([$mockBuilder, 'addMethods']))
+				$mockBuilder->addMethods([$name]);
+			else
+				$mockBuilder->setMethods([$name]);
+
+			$mock       = $mockBuilder->getMock();
 			$mockMethod = $mock->expects(is_int($times) ? $this->exactly($times) : $times)
 				->method($name);
 
