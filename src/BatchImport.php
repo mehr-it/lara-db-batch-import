@@ -30,6 +30,9 @@
 
 		protected $insertCallbacks = [];
 
+		protected $insertOrUpdateCallbacks = [];
+
+		protected $lastBatchId;
 
 		/**
 		 * Creates a new instance
@@ -105,6 +108,17 @@
 			return $this;
 		}
 
+		/**
+		 * Adds a callback which receives all inserted or updated records
+		 * @param callable $callback The callback
+		 * @return $this
+		 */
+		public function onInsertedOrUpdated(callable $callback): BatchImport {
+			$this->insertOrUpdateCallbacks[] = $callback;
+
+			return $this;
+		}
+
 
 		/**
 		 * Sets a custom batch id for the batch import
@@ -144,12 +158,16 @@
 		/**
 		 * Performs a batch import for the given models
 		 * @param Model[]|iterable $records The records to import
+		 * @param string|null $lastBatchId Returns the last used batch id
 		 * @return $this
 		 */
-		public function import($records): BatchImport {
+		public function import($records, &$lastBatchId = null): BatchImport {
 
 			// init buffers
-			[$importBuffer, $insertCallbackBuffer, $updateCallbackBuffer] = $this->makeBuffers();
+			[$importBuffer, $insertCallbackBuffer, $updateCallbackBuffer, $insertOrUpdateCallbackBuffer] = $this->makeBuffers();
+
+			// export last batch id
+			$lastBatchId = $this->lastBatchId;
 
 			// process given data
 			foreach($records as $currRecord) {
@@ -162,13 +180,23 @@
 			// flush callback buffers
 			$insertCallbackBuffer->flush();
 			$updateCallbackBuffer->flush();
+			$insertOrUpdateCallbackBuffer->flush();
 
 			return $this;
 		}
 
+
+		/**
+		 * Gets the last used batch id
+		 * @return string|null The last used batch id
+		 */
+		public function getLastBatchId(): ?string {
+			return $this->lastBatchId;
+		}
+
 		/**
 		 * Creates the buffers for importing data
-		 * @return FlushingBuffer[] The import buffer, the insert callback buffer and the update callback buffer
+		 * @return FlushingBuffer[] The import buffer, the insert callback buffer, the update callback buffer and the combined buffer
 		 */
 		protected function makeBuffers() {
 
@@ -186,13 +214,19 @@
 				}
 			});
 
-			$batchId      = $this->batchId();
-			$batchIdField = $this->batchIdField();
+			$insertOrUpdateCallbackBuffer = new FlushingBuffer($this->callbackBufferSize, function($records) {
+				foreach($this->insertOrUpdateCallbacks as $callback) {
+					call_user_func($callback, $records);
+				}
+			});
 
-			$importBuffer = new FlushingBuffer($this->bufferSize, function($models) use ($updateFieldNames, $updateCallbackBuffer, $insertCallbackBuffer, $batchId, $batchIdField) {
+			$this->lastBatchId = $batchId = $this->batchId();
+			$batchIdField      = $this->batchIdField();
+
+			$importBuffer = new FlushingBuffer($this->bufferSize, function($models) use ($updateFieldNames, $updateCallbackBuffer, $insertCallbackBuffer, $insertOrUpdateCallbackBuffer, $batchId, $batchIdField) {
 				/** @var Model[] $models */
 
-				$this->withTransaction(function() use ($models, $updateFieldNames, $updateCallbackBuffer, $insertCallbackBuffer, $batchId, $batchIdField) {
+				$this->withTransaction(function() use ($models, $updateFieldNames, $updateCallbackBuffer, $insertCallbackBuffer, $insertOrUpdateCallbackBuffer, $batchId, $batchIdField) {
 
 					$dbData = $this->loadExistingRecords($models);
 
@@ -272,6 +306,8 @@
 					// invoke callbacks
 					$insertCallbackBuffer->addMultiple($toInsert);
 					$updateCallbackBuffer->addMultiple($toUpdate);
+					$insertOrUpdateCallbackBuffer->addMultiple($toInsert);
+					$insertOrUpdateCallbackBuffer->addMultiple($toUpdate);
 				});
 
 
@@ -281,6 +317,7 @@
 			return [
 				$importBuffer,
 				$insertCallbackBuffer,
+				$insertOrUpdateCallbackBuffer,
 				$updateCallbackBuffer,
 			];
 		}

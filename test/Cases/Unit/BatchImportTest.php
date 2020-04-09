@@ -61,6 +61,16 @@
 				'insertCallback'
 			));
 			$import->onUpdated($this->expectedCallback(0, [], 'updateCallback'));
+			$import->onInsertedOrUpdated($this->expectedCallback(
+				1,
+				[
+					[
+						$testModel1,
+						$testModel2,
+					],
+				],
+				'insertOrUpdateCallback'
+			));
 
 
 			$this->assertSame($import, $import->import([
@@ -135,6 +145,24 @@
 					})
 				],
 				'updateCallback'
+			));
+			$import->onInsertedOrUpdated($this->expectedCallback(
+				1,
+				[
+					$this->callback(function ($value) use ($testModel1, $testModel2) {
+						$actualIdMap = [];
+						foreach ($value as $curr) {
+							$actualIdMap[$curr->id] = true;
+						}
+
+						$this->assertArrayHasKey($testModel1->id, $actualIdMap);
+						$this->assertArrayHasKey($testModel2->id, $actualIdMap);
+						$this->assertCount(2, $actualIdMap);
+
+						return true;
+					})
+				],
+				'insertOrUpdateCallback'
 			));
 
 			$this->assertSame($import, $import->updateIfExists(['a', 'b', 'c', 'd']));
@@ -231,6 +259,25 @@
 					})
 				],
 				'updateCallback'
+			));
+			$import->onInsertedOrUpdated($this->expectedCallback(
+				1,
+				[
+					$this->callback(function($value) use ($testModelUpdate1, $testModelUpdate2, $testModelToInsert) {
+						$actualCMap = [];
+						foreach ($value as $curr) {
+							$actualCMap[$curr->c] = true;
+						}
+
+						$this->assertArrayHasKey($testModelUpdate1->c, $actualCMap);
+						$this->assertArrayHasKey($testModelUpdate2->c, $actualCMap);
+						$this->assertArrayHasKey($testModelToInsert->c, $actualCMap);
+						$this->assertCount(3, $actualCMap);
+
+						return true;
+					})
+				],
+				'insertOrUpdateCallback'
 			));
 
 			$this->assertSame($import, $import->updateIfExists(['a', 'b', 'c', 'd']));
@@ -1030,8 +1077,10 @@
 				$testModelUpdate2,
 				$testModelToInsert,
 				$testToUpdateBatchIdOnly,
-			]));
+			], $lastBatchId));
 
+			$this->assertSame('19', $lastBatchId);
+			$this->assertSame('19', $import->getLastBatchId());
 
 			$this->assertDatabaseHas('test_table', [
 				'id'         => $toBeUpdated1->id,
@@ -1154,8 +1203,10 @@
 				$testModelUpdate2,
 				$testModelToInsert,
 				$testToUpdateBatchIdOnly,
-			]));
+			], $lastBatchId));
 
+			$this->assertSame('19', $lastBatchId);
+			$this->assertSame('19', $import->getLastBatchId());
 
 			$this->assertDatabaseHas('test_table', [
 				'id'         => $toBeUpdated1->id,
@@ -1274,7 +1325,10 @@
 				$testModelUpdate2,
 				$testModelToInsert,
 				$testToUpdateBatchIdOnly,
-			]));
+			], $lastBatchId));
+
+			$this->assertSame('25', $lastBatchId);
+			$this->assertSame('25', $import->getLastBatchId());
 
 
 			$this->assertDatabaseHas('test_table', [
@@ -1397,8 +1451,10 @@
 				$testModelUpdate2,
 				$testModelToInsert,
 				$testToUpdateBatchIdOnly,
-			]));
+			], $lastBatchId));
 
+			$this->assertSame('19', $lastBatchId);
+			$this->assertSame('19', $import->getLastBatchId());
 
 			$this->assertDatabaseHas('test_table', [
 				'id'            => $toBeUpdated1->id,

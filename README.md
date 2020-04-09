@@ -78,8 +78,8 @@ callable to generate a more customized value:
     
     
 ### Adding callbacks
-Often it is required to know which records have been affected by the batch import. The `onInserted`
-and `onUpdated` methods can be used to register callbacks to receive the corresponding records 
+Often it is required to know which records have been affected by the batch import. The `onInserted()`,
+`onUpdated()` and `onInsertedOrUpdated()` methods can be used to register callbacks to receive the corresponding records 
 (in chunks of 500 per default).
 
     $import->onUpdated(function($records) {
@@ -88,7 +88,7 @@ and `onUpdated` methods can be used to register callbacks to receive the corresp
         }
     });
     
-Note: The model instances passed to the callback are not inevitably the same as the ones passed to
+Note: The model instances passed to the callbacks are not inevitably the same as the ones passed to
 the import function. Further they do not contain updated timestamps or inserted id values, because
 mass insert/update strategies are used for database operations.
 
@@ -140,3 +140,12 @@ without manually invoking `withBatchId()`:
         }
     
     }
+    
+The `import()` method accepts a second parameter which will return the last used batch id.
+Alternatively, the `getLastBatchId()` method can be used:
+
+    $import->import($data, $lastBatchId);
+    
+    // or
+    
+    $import->getLastBatchId(); 
