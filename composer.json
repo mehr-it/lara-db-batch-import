@@ -29,7 +29,7 @@
   "require": {
     "php": "^7.1",
     "mehr-it/buffer": "^1.1",
-    "mehr-it/lara-db-ext": "dev-master"
+    "mehr-it/lara-db-ext": "^1.0"
   },
   "require-dev": {
     "phpunit/phpunit": "^7.4|^8.4",
