@@ -1,0 +1,45 @@
+{
+  "name": "mehr-it/lara-db-batch-import",
+  "type": "library",
+  "description": "Batch import for laravel's eloquent models",
+  "keywords": [
+    "import",
+    "bulk",
+    "laravel",
+    "eloquent"
+  ],
+  "minimum-stability": "stable",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "Christopher Mieger",
+      "email": "mail@mehr-it.info"
+    }
+  ],
+  "autoload": {
+    "psr-4": {
+      "MehrIt\\LaraDbBatchImport\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "MehrItLaraDbBatchImportTest\\": "test/"
+    }
+  },
+  "require": {
+    "php": "^7.1",
+    "mehr-it/buffer": "^1.1",
+    "mehr-it/lara-db-ext": "dev-master"
+  },
+  "require-dev": {
+    "phpunit/phpunit": "^7.4|^8.4",
+    "orchestra/testbench": "3.8.*"
+  },
+  "extra": {
+    "laravel": {
+      "providers": [
+        "MehrIt\\LaraDbBatchImport\\Provider\\LaraDbBatchImportProvider"
+      ]
+    }
+  }
+}
