@@ -10,8 +10,6 @@
 	use InvalidArgumentException;
 	use MehrIt\Buffer\FlushingBuffer;
 	use MehrIt\LaraDbBatchImport\Concerns\BatchImportInfo;
-	use MehrIt\LaraDbBatchImport\Contracts\GeneratesBatchIds;
-	use MehrIt\LaraDbBatchImport\Contracts\StoresBatchId;
 	use Throwable;
 
 	class BatchImport
@@ -121,6 +119,27 @@
 			return $this;
 		}
 
+		/**
+		 * Sets the internal buffer sizes
+		 * @param int $bufferSize The buffer size
+		 * @param int|null $callbackBufferSize The size for the callback buffer. If null, it is set to the same as the buffer size
+		 * @return $this
+		 */
+		public function buffer(int $bufferSize, int $callbackBufferSize = null): BatchImport {
+
+			if ($bufferSize < 1)
+				throw new InvalidArgumentException('Buffer size must be greater than 0.');
+			if ($callbackBufferSize !== null && $callbackBufferSize < 1)
+				throw new InvalidArgumentException('Callback buffer size must be greater than 0.');
+
+			if ($callbackBufferSize === null)
+				$callbackBufferSize = $bufferSize;
+
+			$this->bufferSize         = $bufferSize;
+			$this->callbackBufferSize = $callbackBufferSize;
+
+			return $this;
+		}
 
 		/**
 		 * Performs a batch import for the given models

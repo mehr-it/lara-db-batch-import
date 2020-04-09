@@ -1489,4 +1489,18 @@
 
 			$import->updateIfExists(['' => 15]);
 		}
+
+		public function testBufferSize() {
+			$import = new BatchImport(new TestModel());
+
+			// we simply check for no error
+			$this->assertSame($import, $import->buffer(800, 100));
+		}
+
+		public function testBufferSize_callbackBufferSameSize() {
+			$import = new BatchImport(new TestModel());
+
+			// we simply check for no error
+			$this->assertSame($import, $import->buffer(800));
+		}
 	}
