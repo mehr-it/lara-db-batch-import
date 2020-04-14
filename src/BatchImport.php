@@ -185,6 +185,15 @@
 			return $this;
 		}
 
+		/**
+		 * Creates a new prepared import to be executed later
+		 * @return PreparedBatchImport
+		 */
+		public function prepare(): PreparedBatchImport {
+
+			return new PreparedBatchImport($this);
+		}
+
 
 		/**
 		 * Gets the last used batch id

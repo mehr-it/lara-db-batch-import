@@ -9,6 +9,7 @@
 	use \DB;
 	use InvalidArgumentException;
 	use MehrIt\LaraDbBatchImport\BatchImport;
+	use MehrIt\LaraDbBatchImport\PreparedBatchImport;
 	use MehrItLaraDbBatchImportTest\Cases\TestCase;
 	use MehrItLaraDbBatchImportTest\Model\TestModel;
 	use MehrItLaraDbBatchImportTest\Model\TestModelWithBatch;
@@ -1558,5 +1559,15 @@
 
 			// we simply check for no error
 			$this->assertSame($import, $import->buffer(800));
+		}
+
+		public function testPrepare() {
+
+			$import = new BatchImport(new TestModel());
+
+			$prepared = $import->prepare();
+
+			$this->assertSame($import, $prepared->getImport());
+
 		}
 	}
