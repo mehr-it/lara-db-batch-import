@@ -34,6 +34,8 @@
 
 		protected $lastBatchId;
 
+		protected $updateCallbackWhenFields = [];
+
 		/**
 		 * Creates a new instance
 		 * @param Model $model The model
@@ -82,6 +84,17 @@
 			$this->assertFieldList($fields, false);
 
 			$this->updateFields = $fields;
+
+			return $this;
+		}
+
+		/**
+		 * Sets a list of fields to take into account when determining for which records to invoke the update callback
+		 * @param string[] $fields The fields
+		 * @return $this
+		 */
+		public function onUpdatedWhen(array $fields): BatchImport {
+			$this->updateCallbackWhenFields = $fields;
 
 			return $this;
 		}
@@ -215,6 +228,8 @@
 
 			$updateFieldNames = $this->fieldNames($this->updateFields);
 
+			$updateCallbackWhenFields = $this->updateCallbackWhenFields;
+
 			$updateCallbackBuffer = new FlushingBuffer($this->callbackBufferSize, function($records) {
 				foreach($this->updateCallbacks as $callback) {
 					call_user_func($callback, $records);
@@ -236,16 +251,17 @@
 			$this->lastBatchId = $batchId = $this->batchId();
 			$batchIdField      = $this->batchIdField();
 
-			$importBuffer = new FlushingBuffer($this->bufferSize, function($models) use ($updateFieldNames, $updateCallbackBuffer, $insertCallbackBuffer, $insertOrUpdateCallbackBuffer, $batchId, $batchIdField) {
+			$importBuffer = new FlushingBuffer($this->bufferSize, function($models) use ($updateFieldNames, $updateCallbackBuffer, $insertCallbackBuffer, $insertOrUpdateCallbackBuffer, $batchId, $batchIdField, $updateCallbackWhenFields) {
 				/** @var Model[] $models */
 
-				$this->withTransaction(function() use ($models, $updateFieldNames, $updateCallbackBuffer, $insertCallbackBuffer, $insertOrUpdateCallbackBuffer, $batchId, $batchIdField) {
+				$this->withTransaction(function() use ($models, $updateFieldNames, $updateCallbackBuffer, $insertCallbackBuffer, $insertOrUpdateCallbackBuffer, $batchId, $batchIdField, $updateCallbackWhenFields) {
 
 					$dbData = $this->loadExistingRecords($models);
 
 					$toInsert           = [];
 					$toUpdate           = [];
 					$toUpdateBatchIdFor = [];
+					$updateCallbacksFor = [];
 
 					foreach ($models as $record) {
 
@@ -274,6 +290,10 @@
 									$existingRecord[$batchIdField] = $batchId;
 
 								$toUpdate[] = $existingRecord;
+
+								// add to list to invoke update callbacks for
+								if (!$updateCallbackWhenFields || $existingRecord->isDirty($updateCallbackWhenFields))
+									$updateCallbacksFor[] = $existingRecord;
 							}
 							else {
 								// the record is unchanged, but never the less we have to update the batch id if one given
@@ -318,9 +338,9 @@
 
 					// invoke callbacks
 					$insertCallbackBuffer->addMultiple($toInsert);
-					$updateCallbackBuffer->addMultiple($toUpdate);
+					$updateCallbackBuffer->addMultiple($updateCallbacksFor);
 					$insertOrUpdateCallbackBuffer->addMultiple($toInsert);
-					$insertOrUpdateCallbackBuffer->addMultiple($toUpdate);
+					$insertOrUpdateCallbackBuffer->addMultiple($updateCallbacksFor);
 				});
 
 
