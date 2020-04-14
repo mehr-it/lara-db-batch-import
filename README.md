@@ -148,4 +148,22 @@ Alternatively, the `getLastBatchId()` method can be used:
     
     // or
     
-    $import->getLastBatchId(); 
+    $import->getLastBatchId();
+    
+    
+
+    
+### Prepared imports
+Sometimes it can be very handy to prepare an import, then collect the data and flush the import afterwards.
+The `prepare()` method can be used for this:
+
+    // prepare
+    $prepared = $import->prepare();
+    
+    // add records
+    $prepared->add($record1);
+    $prepared->addMultiple([$record2, $record3]);
+    
+    // flush
+    $prepared->flush($lastBatchId);
+ 
