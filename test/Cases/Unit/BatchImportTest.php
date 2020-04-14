@@ -1501,6 +1501,135 @@
 			$this->assertSame(5, DB::table('test_table')->count());
 		}
 
+		public function testBatchImport_insertAndUpdate_withClosure() {
+
+
+			$model = new TestModel();
+
+			$toBeUpdated1   = factory(TestModel::class)->create();
+			$toBeUpdated2   = factory(TestModel::class)->create();
+			$toBeUnmodified = factory(TestModel::class)->create();
+
+			$testModelUpdate1  = new TestModel([
+				'id' => $toBeUpdated1->id,
+				'a'  => 'a1',
+				'b'  => 'b1',
+				'c'  => 'd1',
+				'd'  => Carbon::now(),
+			]);
+			$testModelUpdate2  = new TestModel([
+				'id' => $toBeUpdated2->id,
+				'a'  => 'a2',
+				'b'  => 'b2',
+				'c'  => 'd2',
+				'd'  => Carbon::now(),
+			]);
+			$testModelToInsert = new TestModel([
+				'a' => 'a4',
+				'b' => 'b4',
+				'c' => 'd4',
+				'd' => Carbon::now(),
+			]);
+
+
+			$import = new BatchImport($model);
+
+			$import->onInserted($this->expectedCallback(
+				1,
+				[
+					[
+						$testModelToInsert,
+					]
+				],
+				'insertCallback'
+			));
+			$import->onUpdated($this->expectedCallback(
+				1,
+				[
+					$this->callback(function ($value) use ($testModelUpdate1, $testModelUpdate2) {
+						$actualIdMap = [];
+						foreach ($value as $curr) {
+							$actualIdMap[$curr->id] = true;
+						}
+
+						$this->assertArrayHasKey($testModelUpdate1->id, $actualIdMap);
+						$this->assertArrayHasKey($testModelUpdate2->id, $actualIdMap);
+						$this->assertCount(2, $actualIdMap);
+
+						return true;
+					})
+				],
+				'updateCallback'
+			));
+			$import->onInsertedOrUpdated($this->expectedCallback(
+				1,
+				[
+					$this->callback(function ($value) use ($testModelUpdate1, $testModelUpdate2, $testModelToInsert) {
+						$actualCMap = [];
+						foreach ($value as $curr) {
+							$actualCMap[$curr->c] = true;
+						}
+
+						$this->assertArrayHasKey($testModelUpdate1->c, $actualCMap);
+						$this->assertArrayHasKey($testModelUpdate2->c, $actualCMap);
+						$this->assertArrayHasKey($testModelToInsert->c, $actualCMap);
+						$this->assertCount(3, $actualCMap);
+
+						return true;
+					})
+				],
+				'insertOrUpdateCallback'
+			));
+
+			$this->assertSame($import, $import->updateIfExists(['a', 'b', 'c', 'd']));
+
+			// shift time
+			Carbon::setTestNow(Carbon::now()->addHour());
+
+
+			$this->assertSame($import, $import->import(function() use ($testModelUpdate1, $testModelUpdate2, $testModelToInsert) {
+				return [
+					$testModelUpdate1,
+					$testModelUpdate2,
+					$testModelToInsert,
+				];
+			}));
+
+
+			$this->assertDatabaseHas('test_table', [
+				'id'         => $toBeUpdated1->id,
+				'a'          => 'a1',
+				'b'          => 'b1',
+				'c'          => 'd1',
+				'd'          => Carbon::now()->subHour(),
+				'updated_at' => Carbon::now(),
+				'created_at' => Carbon::now()->subHour(),
+			]);
+
+			$this->assertDatabaseHas('test_table', [
+				'id'         => $toBeUpdated2->id,
+				'a'          => 'a2',
+				'b'          => 'b2',
+				'c'          => 'd2',
+				'd'          => Carbon::now()->subHour(),
+				'updated_at' => Carbon::now(),
+				'created_at' => Carbon::now()->subHour(),
+			]);
+
+			$this->assertDatabaseHas('test_table', $toBeUnmodified->getAttributes());
+
+			$this->assertDatabaseHas('test_table', [
+				'a'          => 'a4',
+				'b'          => 'b4',
+				'c'          => 'd4',
+				'd'          => Carbon::now()->subHour(),
+				'updated_at' => Carbon::now(),
+				'created_at' => Carbon::now(),
+			]);
+
+			$this->assertSame(4, DB::table('test_table')->count());
+		}
+
 		public function testConstructor_modelWithoutPrimaryKey() {
 
 			$this->expectException(InvalidArgumentException::class);

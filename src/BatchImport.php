@@ -157,7 +157,7 @@
 
 		/**
 		 * Performs a batch import for the given models
-		 * @param Model[]|iterable $records The records to import
+		 * @param Model[]|iterable|callable $records The records to import
 		 * @param string|null $lastBatchId Returns the last used batch id
 		 * @return $this
 		 */
@@ -168,6 +168,10 @@
 
 			// export last batch id
 			$lastBatchId = $this->lastBatchId;
+
+			// if callable given, execute it and use return value
+			if (is_callable($records))
+				$records = call_user_func($records);
 
 			// process given data
 			foreach($records as $currRecord) {
