@@ -455,7 +455,7 @@
 					else
 						$hasNull = true;
 				}
-				$fieldValues = array_unique($fieldValues, SORT_REGULAR);
+				$fieldValues = array_unique($fieldValues, SORT_STRING);
 
 				// build the where condition for the current field
 				$this->whereInValues($query, $field, $fieldValues, $hasNull);
