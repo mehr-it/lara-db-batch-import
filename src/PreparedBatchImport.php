@@ -6,35 +6,32 @@
 
 	use Illuminate\Database\Eloquent\Model;
 	use InvalidArgumentException;
+	use MehrIt\Buffer\FlushingBuffer;
 	use Traversable;
 
 	class PreparedBatchImport
 	{
 
+
 		/**
-		 * @var BatchImport
+		 * @var FlushingBuffer
 		 */
-		protected $import;
+		protected $buffer;
 
-
-		protected $data = [];
+		/**
+		 * @var callable The flush callback
+		 */
+		protected $flushAllCallback;
 
 		/**
 		 * Creates a new instance
-		 * @param BatchImport $import The import instance
+		 * @param FlushingBuffer $buffer The buffer
+		 * @param callable $flushAllCallback The flush callback flushing any remaining data and returning the last batch id
 		 */
-		public function __construct(BatchImport $import) {
-			$this->import = $import;
+		public function __construct(FlushingBuffer $buffer, callable $flushAllCallback) {
+			$this->buffer           = $buffer;
+			$this->flushAllCallback = $flushAllCallback;
 		}
-
-		/**
-		 * Gets the prepared batch import instance
-		 * @return BatchImport The prepared batch import instance
-		 */
-		public function getImport(): BatchImport {
-			return $this->import;
-		}
-
 
 
 		/**
@@ -43,7 +40,7 @@
 		 * @return $this
 		 */
 		public function add(Model $record): PreparedBatchImport {
-			$this->data[] = $record;
+			$this->buffer->add($record);
 
 			return $this;
 		}
@@ -58,7 +55,7 @@
 			if (!is_array($records) && !($records instanceof Traversable))
 				throw new InvalidArgumentException('Expected array or traversable, got ' . is_object($records) ? get_class($records) : strtolower(gettype($records)));
 
-			$this->data[] = $records;
+			$this->buffer->addMultiple($records);
 
 			return $this;
 		}
@@ -71,25 +68,7 @@
 		 */
 		public function flush(&$lastBatchId = null): PreparedBatchImport {
 
-			// build a generator for all given items
-			$gen = function () {
-				foreach ($this->data as $curr) {
-					if ($curr instanceof Model) {
-						// current is a single model => yield it
-						yield $curr;
-					}
-					else {
-						// current is an iterator => yield items
-
-						foreach ($curr as $currItem) {
-							yield $currItem;
-						}
-					}
-				}
-			};
-
-			// perform import
-			$this->import->import($gen(), $lastBatchId);
+			$lastBatchId = call_user_func($this->flushAllCallback);
 
 			return $this;
 		}

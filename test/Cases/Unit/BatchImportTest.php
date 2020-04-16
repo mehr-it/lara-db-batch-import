@@ -1793,13 +1793,333 @@
 			$this->assertSame($import, $import->buffer(800));
 		}
 
-		public function testPrepare() {
+		public function testBatchImport_prepare_insertOnly() {
 
-			$import = new BatchImport(new TestModel());
+
+			$model = new TestModel();
+
+			$testModel1 = new TestModel([
+				'a' => 'a1',
+				'b' => 'b1',
+				'c' => 'd1',
+				'd' => Carbon::now(),
+			]);
+			$testModel2 = new TestModel([
+				'a' => 'a2',
+				'b' => 'b2',
+				'c' => 'd2',
+				'd' => Carbon::now(),
+			]);
+
+
+			$import = new BatchImport($model);
+
+			$import->onInserted($this->expectedCallback(
+				1,
+				[
+					[
+						$testModel1,
+						$testModel2,
+					],
+				],
+				'insertCallback'
+			));
+			$import->onUpdated($this->expectedCallback(0, [], 'updateCallback'));
+			$import->onInsertedOrUpdated($this->expectedCallback(
+				1,
+				[
+					[
+						$testModel1,
+						$testModel2,
+					],
+				],
+				'insertOrUpdateCallback'
+			));
+
 
 			$prepared = $import->prepare();
 
-			$this->assertSame($import, $prepared->getImport());
+			$prepared->add($testModel1);
+			$prepared->add($testModel2);
 
+			$prepared->flush();
+
+			$this->assertDatabaseHas('test_table', [
+				'a'          => 'a1',
+				'b'          => 'b1',
+				'c'          => 'd1',
+				'd'          => Carbon::now(),
+				'updated_at' => Carbon::now(),
+				'created_at' => Carbon::now(),
+			]);
+
+			$this->assertDatabaseHas('test_table', [
+				'a'          => 'a2',
+				'b'          => 'b2',
+				'c'          => 'd2',
+				'd'          => Carbon::now(),
+				'updated_at' => Carbon::now(),
+				'created_at' => Carbon::now(),
+			]);
+
+			$this->assertSame(2, DB::table('test_table')->count());
+		}
+
+		public function testBatchImport_prepare_insertAndUpdate_withBatchId() {
+
+
+			$model = new TestModel();
+
+			$toBeUpdated1        = factory(TestModel::class)->create();
+			$toBeUpdated2        = factory(TestModel::class)->create();
+			$toBeUnmodified      = factory(TestModel::class)->create();
+			$toUpdateBatchIdOnly = factory(TestModel::class)->create();
+
+			$testModelUpdate1  = new TestModel([
+				'id' => $toBeUpdated1->id,
+				'a'  => 'a1',
+				'b'  => 'b1',
+				'c'  => 'd1',
+				'd'  => Carbon::now(),
+			]);
+			$testModelUpdate2  = new TestModel([
+				'id' => $toBeUpdated2->id,
+				'a'  => 'a2',
+				'b'  => 'b2',
+				'c'  => 'd2',
+				'd'  => Carbon::now(),
+			]);
+			$testModelToInsert = new TestModel([
+				'a' => 'a4',
+				'b' => 'b4',
+				'c' => 'd4',
+				'd' => Carbon::now(),
+			]);
+
+			$testToUpdateBatchIdOnly = new TestModel($toUpdateBatchIdOnly->getAttributes());
+
+
+			$import = new BatchImport($model);
+
+			$import->onInserted($this->expectedCallback(
+				1,
+				[
+					[
+						$testModelToInsert,
+					]
+				],
+				'insertCallback'
+			));
+			$import->onUpdated($this->expectedCallback(
+				1,
+				[
+					$this->callback(function ($value) use ($testModelUpdate1, $testModelUpdate2) {
+						$actualIdMap = [];
+						foreach ($value as $curr) {
+							$actualIdMap[$curr->id] = true;
+						}
+
+						$this->assertArrayHasKey($testModelUpdate1->id, $actualIdMap);
+						$this->assertArrayHasKey($testModelUpdate2->id, $actualIdMap);
+						$this->assertCount(2, $actualIdMap);
+
+						return true;
+					})
+				],
+				'updateCallback'
+			));
+
+			$this->assertSame($import, $import->withBatchId(19));
+
+			$this->assertSame($import, $import->updateIfExists(['a', 'b', 'c', 'd']));
+
+			// shift time
+			Carbon::setTestNow(Carbon::now()->addHour());
+
+
+			$prepared = $import->prepare();
+
+			$prepared->addMultiple([
+				$testModelUpdate1,
+				$testModelUpdate2,
+				$testModelToInsert,
+				$testToUpdateBatchIdOnly,
+			]);
+
+			$this->assertSame($prepared, $prepared->flush($lastBatchId));
+
+			$this->assertSame('19', $lastBatchId);
+			$this->assertSame('19', $import->getLastBatchId());
+
+			$this->assertDatabaseHas('test_table', [
+				'id'            => $toBeUpdated1->id,
+				'a'             => 'a1',
+				'b'             => 'b1',
+				'c'             => 'd1',
+				'last_batch_id' => 19,
+				'd'             => Carbon::now()->subHour(),
+				'updated_at'    => Carbon::now(),
+				'created_at'    => Carbon::now()->subHour(),
+			]);
+
+			$this->assertDatabaseHas('test_table', [
+				'id'            => $toBeUpdated2->id,
+				'a'             => 'a2',
+				'b'             => 'b2',
+				'c'             => 'd2',
+				'last_batch_id' => 19,
+				'd'             => Carbon::now()->subHour(),
+				'updated_at'    => Carbon::now(),
+				'created_at'    => Carbon::now()->subHour(),
+			]);
+
+			$this->assertDatabaseHas('test_table', $toBeUnmodified->getAttributes());
+
+			$this->assertDatabaseHas('test_table', array_merge(
+				$toUpdateBatchIdOnly->getAttributes(),
+				[
+					'last_batch_id' => 19
+				]
+			));
+
+			$this->assertDatabaseHas('test_table', [
+				'a'             => 'a4',
+				'b'             => 'b4',
+				'c'             => 'd4',
+				'last_batch_id' => 19,
+				'd'             => Carbon::now()->subHour(),
+				'updated_at'    => Carbon::now(),
+				'created_at'    => Carbon::now(),
+			]);
+
+			$this->assertSame(5, DB::table('test_table')->count());
+		}
+
+		public function testBatchImport_prepare_insertAndUpdate_withBatchIdFromModel() {
+
+
+			$model = new TestModelWithBatch();
+
+			$toBeUpdated1        = factory(TestModelWithBatch::class)->create();
+			$toBeUpdated2        = factory(TestModelWithBatch::class)->create();
+			$toBeUnmodified      = factory(TestModelWithBatch::class)->create();
+			$toUpdateBatchIdOnly = factory(TestModelWithBatch::class)->create();
+
+			$testModelUpdate1  = new TestModelWithBatch([
+				'id' => $toBeUpdated1->id,
+				'a'  => 'a1',
+				'b'  => 'b1',
+				'c'  => 'd1',
+				'd'  => Carbon::now(),
+			]);
+			$testModelUpdate2  = new TestModelWithBatch([
+				'id' => $toBeUpdated2->id,
+				'a'  => 'a2',
+				'b'  => 'b2',
+				'c'  => 'd2',
+				'd'  => Carbon::now(),
+			]);
+			$testModelToInsert = new TestModelWithBatch([
+				'a' => 'a4',
+				'b' => 'b4',
+				'c' => 'd4',
+				'd' => Carbon::now(),
+			]);
+
+			$testToUpdateBatchIdOnly = new TestModelWithBatch($toUpdateBatchIdOnly->getAttributes());
+
+
+			$import = new BatchImport($model);
+
+			$import->onInserted($this->expectedCallback(
+				1,
+				[
+					[
+						$testModelToInsert,
+					]
+				],
+				'insertCallback'
+			));
+			$import->onUpdated($this->expectedCallback(
+				1,
+				[
+					$this->callback(function ($value) use ($testModelUpdate1, $testModelUpdate2) {
+						$actualIdMap = [];
+						foreach ($value as $curr) {
+							$actualIdMap[$curr->id] = true;
+						}
+
+						$this->assertArrayHasKey($testModelUpdate1->id, $actualIdMap);
+						$this->assertArrayHasKey($testModelUpdate2->id, $actualIdMap);
+						$this->assertCount(2, $actualIdMap);
+
+						return true;
+					})
+				],
+				'updateCallback'
+			));
+
+			$this->assertSame($import, $import->updateIfExists(['a', 'b', 'c', 'd']));
+
+			// shift time
+			Carbon::setTestNow(Carbon::now()->addHour());
+
+
+			$prepared = $import->prepare();
+
+			$prepared->addMultiple([
+				$testModelUpdate1,
+				$testModelUpdate2,
+				$testModelToInsert,
+				$testToUpdateBatchIdOnly,
+			]);
+
+			$this->assertSame($prepared, $prepared->flush($lastBatchId));
+
+			$this->assertSame('25', $lastBatchId);
+			$this->assertSame('25', $import->getLastBatchId());
+
+
+			$this->assertDatabaseHas('test_table', [
+				'id'            => $toBeUpdated1->id,
+				'a'             => 'a1',
+				'b'             => 'b1',
+				'c'             => '25',
+				'last_batch_id' => 0,
+				'd'             => Carbon::now()->subHour(),
+				'updated_at'    => Carbon::now(),
+				'created_at'    => Carbon::now()->subHour(),
+			]);
+
+			$this->assertDatabaseHas('test_table', [
+				'id'            => $toBeUpdated2->id,
+				'a'             => 'a2',
+				'b'             => 'b2',
+				'c'             => '25',
+				'last_batch_id' => 0,
+				'd'             => Carbon::now()->subHour(),
+				'updated_at'    => Carbon::now(),
+				'created_at'    => Carbon::now()->subHour(),
+			]);
+
+			$this->assertDatabaseHas('test_table', $toBeUnmodified->getAttributes());
+
+			$this->assertDatabaseHas('test_table', array_merge(
+				$toUpdateBatchIdOnly->getAttributes(),
+				[
+					'c' => 25
+				]
+			));
+
+			$this->assertDatabaseHas('test_table', [
+				'a'          => 'a4',
+				'b'          => 'b4',
+				'c'          => '25',
+				'd'          => Carbon::now()->subHour(),
+				'updated_at' => Carbon::now(),
+				'created_at' => Carbon::now(),
+			]);
+
+			$this->assertSame(5, DB::table('test_table')->count());
 		}
 	}

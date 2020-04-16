@@ -17,7 +17,7 @@
 
 		}
 
-		protected function expectedCallback($times = 1, $args = [], string $name = 'callback') {
+		protected function expectedCallback($times = 1, $args = [], string $name = 'callback', $return = null) {
 
 			$mockBuilder = $this->getMockBuilder('stdClass');
 
@@ -28,7 +28,8 @@
 
 			$mock       = $mockBuilder->getMock();
 			$mockMethod = $mock->expects(is_int($times) ? $this->exactly($times) : $times)
-				->method($name);
+				->method($name)
+				->willReturn($return);
 
 			if (count($args) > 0)
 				$mockMethod->with(...$args);

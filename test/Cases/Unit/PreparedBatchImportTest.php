@@ -5,6 +5,7 @@
 
 
 	use Illuminate\Database\Eloquent\Model;
+	use MehrIt\Buffer\FlushingBuffer;
 	use MehrIt\LaraDbBatchImport\BatchImport;
 	use MehrIt\LaraDbBatchImport\PreparedBatchImport;
 	use MehrItLaraDbBatchImportTest\Cases\TestCase;
@@ -18,26 +19,16 @@
 			/** @var Model|MockObject $m1 */
 			$m1 = $this->getMockBuilder(Model::class)->getMock();
 
-			/** @var BatchImport|MockObject $batchImportMock */
-			$batchImportMock = $this->getMockBuilder(BatchImport::class)->disableOriginalConstructor()->getMock();
-			$batchImportMock
-				->expects($this->once())
-				->method('import')
-				->willReturnCallback(function($records, &$lastBatchId = null) use ($batchImportMock, $m1) {
+			$buffer = new FlushingBuffer(500, $this->expectedCallback(1, [[$m1]]));
 
-					$this->assertSame(
-						[
-							$m1,
-						],
-						iterator_to_array($records)
-					);
+			$flushAllCallback = function() use ($buffer, $m1) {
 
-					$lastBatchId = 19;
+				$buffer->flush();
 
-					return $batchImportMock;
-				});
+				return 19;
+			};
 
-			$pi = new PreparedBatchImport($batchImportMock);
+			$pi = new PreparedBatchImport($buffer, $flushAllCallback);
 
 			$this->assertSame($pi, $pi->add($m1));
 
@@ -53,27 +44,16 @@
 			/** @var Model|MockObject $m2 */
 			$m2 = $this->getMockBuilder(Model::class)->getMock();
 
-			/** @var BatchImport|MockObject $batchImportMock */
-			$batchImportMock = $this->getMockBuilder(BatchImport::class)->disableOriginalConstructor()->getMock();
-			$batchImportMock
-				->expects($this->once())
-				->method('import')
-				->willReturnCallback(function($records, &$lastBatchId = null) use ($batchImportMock, $m1, $m2) {
+			$buffer = new FlushingBuffer(500, $this->expectedCallback(1, [[$m1, $m2]]));
 
-					$this->assertSame(
-						[
-							$m1,
-							$m2,
-						],
-						iterator_to_array($records)
-					);
+			$flushAllCallback = function () use ($buffer, $m1) {
 
-					$lastBatchId = 19;
+				$buffer->flush();
 
-					return $batchImportMock;
-				});
+				return 19;
+			};
 
-			$pi = new PreparedBatchImport($batchImportMock);
+			$pi = new PreparedBatchImport($buffer, $flushAllCallback);
 
 			$this->assertSame($pi, $pi->add($m1));
 			$this->assertSame($pi, $pi->add($m2));
@@ -90,27 +70,16 @@
 			/** @var Model|MockObject $m2 */
 			$m2 = $this->getMockBuilder(Model::class)->getMock();
 
-			/** @var BatchImport|MockObject $batchImportMock */
-			$batchImportMock = $this->getMockBuilder(BatchImport::class)->disableOriginalConstructor()->getMock();
-			$batchImportMock
-				->expects($this->once())
-				->method('import')
-				->willReturnCallback(function($records, &$lastBatchId = null) use ($batchImportMock, $m1, $m2) {
+			$buffer = new FlushingBuffer(500, $this->expectedCallback(1, [[$m1, $m2]]));
 
-					$this->assertSame(
-						[
-							$m1,
-							$m2,
-						],
-						iterator_to_array($records)
-					);
+			$flushAllCallback = function () use ($buffer, $m1) {
 
-					$lastBatchId = 19;
+				$buffer->flush();
 
-					return $batchImportMock;
-				});
+				return 19;
+			};
 
-			$pi = new PreparedBatchImport($batchImportMock);
+			$pi = new PreparedBatchImport($buffer, $flushAllCallback);
 
 			$this->assertSame($pi, $pi->addMultiple([$m1, $m2]));
 
@@ -130,29 +99,16 @@
 			/** @var Model|MockObject $m4 */
 			$m4 = $this->getMockBuilder(Model::class)->getMock();
 
-			/** @var BatchImport|MockObject $batchImportMock */
-			$batchImportMock = $this->getMockBuilder(BatchImport::class)->disableOriginalConstructor()->getMock();
-			$batchImportMock
-				->expects($this->once())
-				->method('import')
-				->willReturnCallback(function($records, &$lastBatchId = null) use ($batchImportMock, $m1, $m2, $m3, $m4) {
+			$buffer = new FlushingBuffer(500, $this->expectedCallback(1, [[$m1, $m2, $m3, $m4]]));
 
-					$this->assertSame(
-						[
-							$m1,
-							$m2,
-							$m3,
-							$m4
-						],
-						iterator_to_array($records)
-					);
+			$flushAllCallback = function () use ($buffer, $m1) {
 
-					$lastBatchId = 19;
+				$buffer->flush();
 
-					return $batchImportMock;
-				});
+				return 19;
+			};
 
-			$pi = new PreparedBatchImport($batchImportMock);
+			$pi = new PreparedBatchImport($buffer, $flushAllCallback);
 
 			$this->assertSame($pi, $pi->addMultiple([$m1, $m2]));
 			$this->assertSame($pi, $pi->addMultiple([$m3, $m4]));
@@ -169,27 +125,16 @@
 			/** @var Model|MockObject $m2 */
 			$m2 = $this->getMockBuilder(Model::class)->getMock();
 
-			/** @var BatchImport|MockObject $batchImportMock */
-			$batchImportMock = $this->getMockBuilder(BatchImport::class)->disableOriginalConstructor()->getMock();
-			$batchImportMock
-				->expects($this->once())
-				->method('import')
-				->willReturnCallback(function ($records, &$lastBatchId = null) use ($batchImportMock, $m1, $m2) {
+			$buffer = new FlushingBuffer(500, $this->expectedCallback(1, [[$m1, $m2]]));
 
-					$this->assertSame(
-						[
-							$m1,
-							$m2,
-						],
-						iterator_to_array($records)
-					);
+			$flushAllCallback = function () use ($buffer, $m1) {
 
-					$lastBatchId = 19;
+				$buffer->flush();
 
-					return $batchImportMock;
-				});
+				return 19;
+			};
 
-			$pi = new PreparedBatchImport($batchImportMock);
+			$pi = new PreparedBatchImport($buffer, $flushAllCallback);
 
 			$gen1 = function () use ($m1, $m2) {
 				yield $m1;
@@ -214,29 +159,16 @@
 			/** @var Model|MockObject $m4 */
 			$m4 = $this->getMockBuilder(Model::class)->getMock();
 
-			/** @var BatchImport|MockObject $batchImportMock */
-			$batchImportMock = $this->getMockBuilder(BatchImport::class)->disableOriginalConstructor()->getMock();
-			$batchImportMock
-				->expects($this->once())
-				->method('import')
-				->willReturnCallback(function ($records, &$lastBatchId = null) use ($batchImportMock, $m1, $m2, $m3, $m4) {
+			$buffer = new FlushingBuffer(500, $this->expectedCallback(1, [[$m1, $m2, $m3, $m4]]));
 
-					$this->assertSame(
-						[
-							$m1,
-							$m2,
-							$m3,
-							$m4
-						],
-						iterator_to_array($records)
-					);
+			$flushAllCallback = function () use ($buffer, $m1) {
 
-					$lastBatchId = 19;
+				$buffer->flush();
 
-					return $batchImportMock;
-				});
+				return 19;
+			};
 
-			$pi = new PreparedBatchImport($batchImportMock);
+			$pi = new PreparedBatchImport($buffer, $flushAllCallback);
 
 			$gen1 = function () use ($m1, $m2) {
 				yield $m1;
@@ -269,30 +201,16 @@
 			/** @var Model|MockObject $m5 */
 			$m5 = $this->getMockBuilder(Model::class)->getMock();
 
-			/** @var BatchImport|MockObject $batchImportMock */
-			$batchImportMock = $this->getMockBuilder(BatchImport::class)->disableOriginalConstructor()->getMock();
-			$batchImportMock
-				->expects($this->once())
-				->method('import')
-				->willReturnCallback(function ($records, &$lastBatchId = null) use ($batchImportMock, $m1, $m2, $m3, $m4, $m5) {
+			$buffer = new FlushingBuffer(500, $this->expectedCallback(1, [[$m1, $m2, $m3, $m4, $m5]]));
 
-					$this->assertSame(
-						[
-							$m1,
-							$m2,
-							$m3,
-							$m4,
-							$m5,
-						],
-						iterator_to_array($records)
-					);
+			$flushAllCallback = function () use ($buffer, $m1) {
 
-					$lastBatchId = 19;
+				$buffer->flush();
 
-					return $batchImportMock;
-				});
+				return 19;
+			};
 
-			$pi = new PreparedBatchImport($batchImportMock);
+			$pi = new PreparedBatchImport($buffer, $flushAllCallback);
 
 			$gen1 = function () use ($m2, $m3) {
 				yield $m2;

@@ -176,28 +176,18 @@
 		 */
 		public function import($records, &$lastBatchId = null): BatchImport {
 
-			// init buffers
-			[$importBuffer, $insertCallbackBuffer, $updateCallbackBuffer, $insertOrUpdateCallbackBuffer] = $this->makeBuffers();
-
-			// export last batch id
-			$lastBatchId = $this->lastBatchId;
+			// prepare import
+			$import = $this->prepare();
 
 			// if callable given, execute it and use return value
 			if (is_callable($records))
 				$records = call_user_func($records);
 
-			// process given data
-			foreach($records as $currRecord) {
-				$importBuffer->add($currRecord);
-			}
+			// add records
+			$import->addMultiple($records);
 
-			// flush buffer
-			$importBuffer->flush();
-
-			// flush callback buffers
-			$insertCallbackBuffer->flush();
-			$updateCallbackBuffer->flush();
-			$insertOrUpdateCallbackBuffer->flush();
+			// flush anything
+			$import->flush($lastBatchId);
 
 			return $this;
 		}
@@ -208,7 +198,26 @@
 		 */
 		public function prepare(): PreparedBatchImport {
 
-			return new PreparedBatchImport($this);
+			// init buffers
+			[$importBuffer, $insertCallbackBuffer, $updateCallbackBuffer, $insertOrUpdateCallbackBuffer] = $this->makeBuffers();
+
+			// export last batch id
+			$lastBatchId = $this->lastBatchId;
+
+			$cb = function() use ($importBuffer, $insertCallbackBuffer, $updateCallbackBuffer, $insertOrUpdateCallbackBuffer, $lastBatchId) {
+
+				// flush buffer
+				$importBuffer->flush();
+
+				// flush callback buffers
+				$insertCallbackBuffer->flush();
+				$updateCallbackBuffer->flush();
+				$insertOrUpdateCallbackBuffer->flush();
+
+				return $lastBatchId;
+			};
+
+			return new PreparedBatchImport($importBuffer, $cb);
 		}
 
 
