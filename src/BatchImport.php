@@ -10,6 +10,7 @@
 	use InvalidArgumentException;
 	use MehrIt\Buffer\FlushingBuffer;
 	use MehrIt\LaraDbBatchImport\Concerns\BatchImportInfo;
+	use MehrIt\LaraTransactions\TransactionManager;
 	use Throwable;
 
 	class BatchImport
@@ -35,6 +36,11 @@
 		protected $lastBatchId;
 
 		protected $updateCallbackWhenFields = [];
+
+		/**
+		 * @var TransactionManager
+		 */
+		protected $transactionManager;
 
 		/**
 		 * Creates a new instance
@@ -504,7 +510,7 @@
 		 * @throws Throwable
 		 */
 		protected function withTransaction(callable $callback) {
-			return $this->model->getConnection()->transaction($callback);
+			return $this->transactionManager()->run($this->model, $callback);
 		}
 
 		/**
@@ -545,5 +551,15 @@
 			return $this->model;
 		}
 
+		/**
+		 * Gets a transaction manager instance
+		 * @return TransactionManager
+		 */
+		protected function transactionManager() {
+			if (!$this->transactionManager)
+				$this->transactionManager = app(TransactionManager::class);
+
+			return $this->transactionManager;
+		}
 
 	}

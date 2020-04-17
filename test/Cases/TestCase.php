@@ -8,6 +8,7 @@
 	use Illuminate\Support\Arr;
 	use MehrIt\LaraDbBatchImport\Provider\LaraDbBatchImportProvider;
 	use MehrIt\LaraDbExt\Provider\LaraDbExtServiceProvider;
+	use MehrIt\LaraTransactions\Provider\TransactionsProvider;
 
 	class TestCase extends \Orchestra\Testbench\TestCase
 	{
@@ -93,6 +94,7 @@
 			return [
 				LaraDbBatchImportProvider::class,
 				LaraDbExtServiceProvider::class,
+				TransactionsProvider::class,
 			];
 		}
 

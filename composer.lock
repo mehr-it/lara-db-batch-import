@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "855bdd11aa850daa9c97e1215809629b",
+    "content-hash": "a12301a7df06000cad39ecefb457775d",
     "packages": [
         {
             "name": "doctrine/inflector",
@@ -630,6 +630,57 @@
                 "update multiple models"
             ],
             "time": "2020-04-09T10:59:18+00:00"
+        },
+        {
+            "name": "mehr-it/lara-transactions",
+            "version": "1.0.2",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/mehr-it/lara-transactions.git",
+                "reference": "81a3f2f71a149a56f0db96496cb5071faf7ead44"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/mehr-it/lara-transactions/zipball/81a3f2f71a149a56f0db96496cb5071faf7ead44",
+                "reference": "81a3f2f71a149a56f0db96496cb5071faf7ead44",
+                "shasum": ""
+            },
+            "require": {
+                "laravel/framework": "^5.8|^6.0"
+            },
+            "require-dev": {
+                "orchestra/testbench": "^3.8|^4.0",
+                "phpunit/phpunit": "^7.4|^8.0",
+                "yajra/laravel-oci8": "^5.8|^6.0"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "MehrIt\\LaraTransactions\\Provider\\TransactionsProvider"
+                    ],
+                    "aliases": {
+                        "Transaction": "MehrIt\\LaraTransactions\\Facades\\Transaction"
+                    }
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "MehrIt\\LaraTransactions\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Christopher Mieger",
+                    "email": "mail@mehr-it.info"
+                }
+            ],
+            "description": "Handles multiple simultaneous transactions and offers a general transaction interface for laravel",
+            "time": "2020-04-17T09:51:51+00:00"
         },
         {
             "name": "monolog/monolog",
