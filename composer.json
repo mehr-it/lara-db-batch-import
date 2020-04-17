@@ -8,7 +8,6 @@
     "laravel",
     "eloquent"
   ],
-  "minimum-stability": "stable",
   "license": "MIT",
   "authors": [
     {
@@ -28,6 +27,7 @@
   },
   "require": {
     "php": "^7.1",
+    "laravel/framework": "^5.8|^6.0|^7.0",
     "mehr-it/buffer": "^1.1",
     "mehr-it/lara-db-ext": "^1.0",
     "mehr-it/lara-transactions": "^1.0"
