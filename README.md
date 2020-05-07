@@ -167,3 +167,28 @@ The `prepare()` method can be used for this:
     // flush
     $prepared->flush($lastBatchId);
  
+ 
+### Bypassing models
+Using models for managing database data offers a clean and comfortable interface. However, this
+comes with the drawback of some overhead. When performing bulk imports with large datasets
+model attribute set/get operations are performed a thousand times. The performance impact can
+be significant. 
+
+**If you do not need model attribute functionality**, such as mutators, accessors, casts and so on
+the `bypassModel()` method can make your application much faster.
+
+    $import->bypassModel();
+    
+In such case you must provide the data as raw arrays instead of model instances. 
+
+The `bypassModel()` method also accepts a second parameter called "rawComparators". It accepts 
+custom comparator functions for fields. These are used to compare the new data with existing
+data to detect changes. Eg. a decimal stored in database might be returned as '12.90' but your
+input might be '12.9'. Without a custom comparator the row will be detected as change. But a 
+custom comparator can avoid this:
+
+    $import->bypassModel(true, [
+        'price' => function($new, $old) {
+            return bccomp($new, $old, 2);
+        }
+    ]);
