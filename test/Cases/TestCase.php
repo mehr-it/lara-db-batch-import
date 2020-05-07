@@ -38,6 +38,23 @@
 			return [$mock, $name];
 		}
 
+		protected function itemsSubsetMatchesCallback($expected, $exclude = []) {
+
+			$exclude = array_fill_keys($exclude, true);
+
+			return $this->callback(function($value) use ($expected, $exclude) {
+
+				foreach($value as $index => $currItem) {
+					$relevant = array_diff_key(array_intersect_key($currItem, $expected[$index]), $exclude);
+
+					$this->assertEquals(array_diff_key($expected[$index], $exclude), $relevant);
+				}
+
+				return true;
+			});
+
+		}
+
 		protected function matchesExpectedSql($expectedSql, $actual) {
 			$valueNorm = $this->normalizeSql($actual);
 

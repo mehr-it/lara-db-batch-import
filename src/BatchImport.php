@@ -4,6 +4,7 @@
 	namespace MehrIt\LaraDbBatchImport;
 
 
+	use Carbon\Carbon;
 	use Illuminate\Database\Eloquent\Builder;
 	use Illuminate\Database\Eloquent\Model;
 	use Illuminate\Support\Arr;
@@ -11,6 +12,7 @@
 	use MehrIt\Buffer\FlushingBuffer;
 	use MehrIt\LaraDbBatchImport\Concerns\BatchImportInfo;
 	use MehrIt\LaraTransactions\TransactionManager;
+	use RuntimeException;
 	use Throwable;
 
 	class BatchImport
@@ -36,6 +38,10 @@
 		protected $lastBatchId;
 
 		protected $updateCallbackWhenFields = [];
+
+		protected $bypassModel = false;
+
+		protected $rawComparators = [];
 
 		/**
 		 * @var TransactionManager
@@ -199,6 +205,23 @@
 		}
 
 		/**
+		 * Sets if to bypass the model when building import data. This significantly improves performance but has the drawback that attribute values are not processed using casts, mutators and so on.
+		 * @param bool $value True if to activate model bypass.
+		 * @param callable[] $rawComparators Allows to define custom comparators for fields to detect changes. The comparator function receives the new and the existing value and must return a falsy value if both values are equivalent. Fields without comparator are compared using equality comparison.
+		 * @return $this This instance
+		 */
+		public function bypassModel(bool $value = true, array $rawComparators = []): BatchImport {
+			if ($value)
+				$this->rawComparators = $rawComparators;
+			else if ($rawComparators)
+				throw new InvalidArgumentException('Raw comparators are only applicable when bypassModel is activated');
+
+			$this->bypassModel = $value;
+
+			return $this;
+		}
+
+		/**
 		 * Creates a new prepared import to be executed later
 		 * @return PreparedBatchImport
 		 */
@@ -241,9 +264,21 @@
 		 */
 		protected function makeBuffers() {
 
-			$updateFieldNames = $this->fieldNames($this->updateFields);
+			$keyName = $this->model()->getKeyName();
 
-			$updateCallbackWhenFields = $this->updateCallbackWhenFields;
+			$bypassModel = $this->bypassModel;
+
+			$updateFields = $this->updateFields;
+			$updateFieldNames = $this->fieldNames($updateFields);
+
+			$updatedAtField = null;
+			$createdAtField = null;
+			if ($this->model()->usesTimestamps()) {
+				$updatedAtField = $this->model()->getUpdatedAtColumn();
+				$createdAtField = $this->model()->getCreatedAtColumn();
+			}
+
+			$updateCallbackWhenFieldsMap = array_fill_keys($this->updateCallbackWhenFields, true);
 
 			$updateCallbackBuffer = new FlushingBuffer($this->callbackBufferSize, function($records) {
 				foreach($this->updateCallbacks as $callback) {
@@ -266,10 +301,10 @@
 			$this->lastBatchId = $batchId = $this->batchId();
 			$batchIdField      = $this->batchIdField();
 
-			$importBuffer = new FlushingBuffer($this->bufferSize, function($models) use ($updateFieldNames, $updateCallbackBuffer, $insertCallbackBuffer, $insertOrUpdateCallbackBuffer, $batchId, $batchIdField, $updateCallbackWhenFields) {
-				/** @var Model[] $models */
+			$importBuffer = new FlushingBuffer($this->bufferSize, function($models) use ($updateFieldNames, $updateCallbackBuffer, $insertCallbackBuffer, $insertOrUpdateCallbackBuffer, $batchId, $batchIdField, $updateCallbackWhenFieldsMap, $updateFields, $keyName, $updatedAtField, $createdAtField, $bypassModel) {
+				/** @var Model[]|array[] $models */
 
-				$this->withTransaction(function() use ($models, $updateFieldNames, $updateCallbackBuffer, $insertCallbackBuffer, $insertOrUpdateCallbackBuffer, $batchId, $batchIdField, $updateCallbackWhenFields) {
+				$this->withTransaction(function() use ($models, $updateFieldNames, $updateCallbackBuffer, $insertCallbackBuffer, $insertOrUpdateCallbackBuffer, $batchId, $batchIdField, $updateCallbackWhenFieldsMap, $updateFields, $keyName, $updatedAtField, $createdAtField, $bypassModel) {
 
 					$dbData = $this->loadExistingRecords($models);
 
@@ -278,7 +313,13 @@
 					$toUpdateBatchIdFor = [];
 					$updateCallbacksFor = [];
 
+					$now = Carbon::now();
+
 					foreach ($models as $record) {
+
+						if ($bypassModel && $record instanceof Model)
+							throw new RuntimeException('Expected data array instead of model when bypassModel is activated');
+
 
 						// get existing record (by comparison key)
 						$comparisonKey  = $this->comparisonKey($record);
@@ -290,31 +331,64 @@
 						if ($existingRecord) {
 							// apply updates
 
-							foreach ($this->updateFields as $key => $field) {
+							$isDirty                     = false;
+							$shouldInvokeUpdateCallbacks = false;
 
-								if (is_int($key))
-									$existingRecord[$field] = ($record[$field] ?? null);
-								else
-									$existingRecord[$key] = (is_callable($field) ? call_user_func($field, ($record[$key] ?? null), $existingRecord, $record, $field) : $field);
+							foreach ($updateFields as $key => $field) {
+
+								if (is_int($key)) {
+									$key   = $field;
+									$value = $record[$field] ?? null;
+								}
+								else {
+									$value = is_callable($field) ?
+										call_user_func($field, ($record[$key] ?? null), $existingRecord, $record, $field) :
+										$field;
+								}
+
+
+								// Update dirty state. We can save the effort, if already marked as dirty.
+								if (!$isDirty || (!$shouldInvokeUpdateCallbacks && ($updateCallbackWhenFieldsMap[$key] ?? false))) {
+
+									// check if current field is dirty
+									$isFieldDirty = $this->isFieldModified($key, $value, $existingRecord);
+
+									// set new dirty state if field is dirty
+									if ($isFieldDirty)
+										$isDirty = true;
+
+									// Check if to invoke update callbacks. If no updateWhenCallbackFields are defined, this is the same as the dirty state.
+									// Otherwise the update callbacks should only be invoked when a listed field is dirty
+								    $shouldInvokeUpdateCallbacks = !$updateCallbackWhenFieldsMap ?
+									    $isDirty :
+									    $isFieldDirty && ($updateCallbackWhenFieldsMap[$key] ?? false);
+								}
+
+								$existingRecord[$key] = $value;
+
 							}
 
-							if ($existingRecord->isDirty($updateFieldNames)) {
+							if ($isDirty) {
 
 								// set batch id if given
 								if ($batchId !== null)
 									$existingRecord[$batchIdField] = $batchId;
 
+								// set updated_at date
+								if ($updatedAtField)
+									$existingRecord[$updatedAtField] = $now;
+
 								$toUpdate[] = $existingRecord;
 
 								// add to list to invoke update callbacks for
-								if (!$updateCallbackWhenFields || $existingRecord->isDirty($updateCallbackWhenFields))
+								if ($shouldInvokeUpdateCallbacks)
 									$updateCallbacksFor[] = $existingRecord;
 							}
 							else {
 								// the record is unchanged, but never the less we have to update the batch id if one given
 
 								if ($batchId !== null)
-									$toUpdateBatchIdFor[] = $existingRecord->getKey();
+									$toUpdateBatchIdFor[] = $existingRecord[$keyName];
 							}
 						}
 						else {
@@ -323,32 +397,69 @@
 							if ($batchId !== null)
 								$record[$batchIdField] = $batchId;
 
+							// set timestamp fields
+							if ($updatedAtField)
+								$record[$updatedAtField] = $now;
+							if ($createdAtField)
+								$record[$createdAtField] = $now;
+
 							// insert record
 							$toInsert[] = $record;
 						}
 
 					}
 
-					// update existing record
-					if ($toUpdate)
-						$this->callModelStatic('updateWithJoinedModels', $toUpdate, [], array_merge($updateFieldNames, ($batchId ? [$batchIdField] : [])));
+					// update existing records
+					if ($toUpdate) {
+
+						if (!$this->bypassModel) {
+							// use model update
+
+							$this->callModelStatic('updateWithJoinedModels', $toUpdate, [], array_merge(
+								$updateFieldNames,
+								($batchId ? [$batchIdField] : [])
+							));
+						}
+						else {
+							// use raw update
+
+							$this->modelQuery()
+								->toBase()
+								->updateWithJoinedData($toUpdate, [$keyName], array_merge(
+									$updateFieldNames,
+									($batchId ? [$batchIdField] : []),
+									($updatedAtField ? [$updatedAtField] : [])
+								));
+						}
+					}
 
 
 					// update batch id for unmodified records
 					if ($toUpdateBatchIdFor) {
 						foreach(array_chunk($toUpdateBatchIdFor, $this->bufferSize) as $currKeys) {
-							/** @var Builder $query */
-							$query = $this->callModelStatic('query');
-
-							$query->whereIn($this->model->getKeyName(), $currKeys)
+							$this->modelQuery()
+								->whereIn($keyName, $currKeys)
 								->toBase()
 								->update([$batchIdField => $batchId]);
 						}
 					}
 
 					// insert new records
-					if ($toInsert)
-						$this->callModelStatic('insertModels', $toInsert);
+					if ($toInsert) {
+
+						if (!$this->bypassModel) {
+							// use model insert
+
+							$this->callModelStatic('insertModels', $toInsert);
+						}
+						else {
+							// use raw insert
+
+							$this->modelQuery()
+								->toBase()
+								->insert($toInsert);
+						}
+					}
 
 
 					// invoke callbacks
@@ -386,24 +497,57 @@
 		}
 
 		/**
+		 * Checks if the given field is modified
+		 * @param string $key The key
+		 * @param mixed $value The value
+		 * @param array|Model $existingRecord The existing record
+		 * @return bool True if modified. Else false.
+		 */
+		protected function isFieldModified($key, $value, $existingRecord): bool {
+
+			// if a model is passed, we use originalIsEquivalent() method
+			if (!$this->bypassModel)
+				return !$existingRecord->originalIsEquivalent($key, $value);
+
+			$existingValue = $existingRecord[$key] ?? null;
+
+			// use comparator if one exists
+			if ($comparator = ($this->rawComparators[$key] ?? null))
+				return call_user_func($comparator, $value, $existingValue, $existingRecord);
+
+			// default comparison
+			return $value === null && $existingValue === null ?
+				false :
+				$value != $existingValue;
+		}
+
+		/**
 		 * Loads the existing records for the given data chunk
-		 * @param Model[] $models The data
-		 * @return Model[] The existing models. Comparison key as array key. Models without valid comparison key are not returned.
+		 * @param Model[]|array[] $models The data
+		 * @return Model[]|array[] The existing models or model data. Comparison key as array key. Models without valid comparison key are not returned.
 		 */
 		protected function loadExistingRecords(array $models): array {
 
 			$ret = [];
+			$bypassModel = $this->bypassModel;
 
-			$this->existingChunkWhere($this->callModelStatic('query'), $models)
-				->lockForUpdate()
-				->get()
-				->each(function($record) use (&$ret) {
-					$comparisonKey = $this->comparisonKey($record);
+			/** @var Builder $query */
+			$query = $this->existingChunkWhere($this->callModelStatic('query'), $models)
+				->lockForUpdate();
 
-					if ($comparisonKey !== null)
-						$ret[$comparisonKey] = $record;
-				});
+			// use query builder if to ignore casts
+			if ($bypassModel)
+				$query = $query->toBase();
 
+			foreach($query->get() as $curr) {
+
+				// convert stdClass to array
+				if ($bypassModel)
+					$curr = (array)$curr;
+
+				if (($comparisonKey = $this->comparisonKey($curr)) !== null)
+					$ret[$comparisonKey] = $curr;
+			}
 
 			return $ret;
 		}
@@ -521,6 +665,14 @@
 		 */
 		protected function callModelStatic(string $method, ...$args) {
 			return forward_static_call([get_class($this->model), $method], ...$args);
+		}
+
+		/**
+		 * Creates a new model query
+		 * @return Builder The query
+		 */
+		protected function modelQuery() {
+			return $this->callModelStatic('query');
 		}
 
 		/**
