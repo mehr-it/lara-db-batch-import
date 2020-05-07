@@ -278,6 +278,7 @@
 				$createdAtField = $this->model()->getCreatedAtColumn();
 			}
 
+			$updateCallbackWhenFields    = $this->updateCallbackWhenFields;
 			$updateCallbackWhenFieldsMap = array_fill_keys($this->updateCallbackWhenFields, true);
 
 			$updateCallbackBuffer = new FlushingBuffer($this->callbackBufferSize, function($records) {
@@ -301,10 +302,10 @@
 			$this->lastBatchId = $batchId = $this->batchId();
 			$batchIdField      = $this->batchIdField();
 
-			$importBuffer = new FlushingBuffer($this->bufferSize, function($models) use ($updateFieldNames, $updateCallbackBuffer, $insertCallbackBuffer, $insertOrUpdateCallbackBuffer, $batchId, $batchIdField, $updateCallbackWhenFieldsMap, $updateFields, $keyName, $updatedAtField, $createdAtField, $bypassModel) {
+			$importBuffer = new FlushingBuffer($this->bufferSize, function($models) use ($updateFieldNames, $updateCallbackBuffer, $insertCallbackBuffer, $insertOrUpdateCallbackBuffer, $batchId, $batchIdField, $updateCallbackWhenFields, $updateCallbackWhenFieldsMap, $updateFields, $keyName, $updatedAtField, $createdAtField, $bypassModel) {
 				/** @var Model[]|array[] $models */
 
-				$this->withTransaction(function() use ($models, $updateFieldNames, $updateCallbackBuffer, $insertCallbackBuffer, $insertOrUpdateCallbackBuffer, $batchId, $batchIdField, $updateCallbackWhenFieldsMap, $updateFields, $keyName, $updatedAtField, $createdAtField, $bypassModel) {
+				$this->withTransaction(function() use ($models, $updateFieldNames, $updateCallbackBuffer, $insertCallbackBuffer, $insertOrUpdateCallbackBuffer, $batchId, $batchIdField, $updateCallbackWhenFields, $updateCallbackWhenFieldsMap, $updateFields, $keyName, $updatedAtField, $createdAtField, $bypassModel) {
 
 					$dbData = $this->loadExistingRecords($models);
 
@@ -347,26 +348,37 @@
 								}
 
 
-								// Update dirty state. We can save the effort, if already marked as dirty.
-								if (!$isDirty || (!$shouldInvokeUpdateCallbacks && ($updateCallbackWhenFieldsMap[$key] ?? false))) {
+								// Update dirty state if not using models. We can save the effort, if already marked as dirty.
+								if ($bypassModel) {
 
-									// check if current field is dirty
-									$isFieldDirty = $this->isFieldModified($key, $value, $existingRecord);
+									if (!$isDirty || (!$shouldInvokeUpdateCallbacks && ($updateCallbackWhenFieldsMap[$key] ?? false))) {
 
-									// set new dirty state if field is dirty
-									if ($isFieldDirty)
-										$isDirty = true;
+										// check if current field is dirty
+										$isFieldDirty = $this->isFieldModified($key, $value, $existingRecord);
 
-									// Check if to invoke update callbacks. If no updateWhenCallbackFields are defined, this is the same as the dirty state.
-									// Otherwise the update callbacks should only be invoked when a listed field is dirty
-								    $shouldInvokeUpdateCallbacks = !$updateCallbackWhenFieldsMap ?
-									    $isDirty :
-									    $isFieldDirty && ($updateCallbackWhenFieldsMap[$key] ?? false);
+										// set new dirty state if field is dirty
+										if ($isFieldDirty)
+											$isDirty = true;
+
+										// Check if to invoke update callbacks. If no updateWhenCallbackFields are defined, this is the same as the dirty state.
+										// Otherwise the update callbacks should only be invoked when a listed field is dirty
+										$shouldInvokeUpdateCallbacks = !$updateCallbackWhenFieldsMap ?
+											$isDirty :
+											$isFieldDirty && ($updateCallbackWhenFieldsMap[$key] ?? false);
+									}
 								}
 
 								$existingRecord[$key] = $value;
 
 							}
+
+							// Update dirty state if using models
+							if (!$bypassModel) {
+								$isDirty = $existingRecord->isDirty($updateFieldNames);
+
+								$shouldInvokeUpdateCallbacks = (!$updateCallbackWhenFieldsMap || $existingRecord->isDirty($updateCallbackWhenFields));
+							}
+
 
 							if ($isDirty) {
 
@@ -500,14 +512,10 @@
 		 * Checks if the given field is modified
 		 * @param string $key The key
 		 * @param mixed $value The value
-		 * @param array|Model $existingRecord The existing record
+		 * @param array $existingRecord The existing record
 		 * @return bool True if modified. Else false.
 		 */
-		protected function isFieldModified($key, $value, $existingRecord): bool {
-
-			// if a model is passed, we use originalIsEquivalent() method
-			if (!$this->bypassModel)
-				return !$existingRecord->originalIsEquivalent($key, $value);
+		protected function isFieldModified($key, $value, array $existingRecord): bool {
 
 			$existingValue = $existingRecord[$key] ?? null;
 
