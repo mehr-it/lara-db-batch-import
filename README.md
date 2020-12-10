@@ -6,9 +6,10 @@ Batch imports are a common task for any larger system. This packages implements 
 for laravel's eloquent models.
 
 ## How to use
-First the `ProvidesBatchImport` trait must be added to a model:
+First the `ProvidesBatchImport` and the `DbExtensions` (from package [mehr-it/lara-db-ext](https://packagist.org/packages/mehr-it/lara-db-ext)) trait must be added to a model:
 
     class User extends Model {
+        uses DbExtensions;
         uses ProvidesBatchImport;
     } 
     

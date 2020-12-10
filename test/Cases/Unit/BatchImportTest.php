@@ -9,7 +9,6 @@
 	use \DB;
 	use InvalidArgumentException;
 	use MehrIt\LaraDbBatchImport\BatchImport;
-	use MehrIt\LaraDbBatchImport\PreparedBatchImport;
 	use MehrItLaraDbBatchImportTest\Cases\TestCase;
 	use MehrItLaraDbBatchImportTest\Model\TestModel;
 	use MehrItLaraDbBatchImportTest\Model\TestModelWithBatch;
