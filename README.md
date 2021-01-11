@@ -48,7 +48,8 @@ strategies.
 The fields used to consider two records as "matching" (and therefore to update instead of insert new 
 data) can be specified using the `matchBy()` method. Multiple fields can be passed as array.
 
-Records are considered to match if the string representation of all given matchBy fields is equal.
+Records are considered to match if the string representation of all given matchBy fields is equal. By 
+default **matching is case-sensitive**. Set the second parameter to false, for case-insensitive matching.  
 
 **Attention:** The according to SQL's "three-valued logic" comparing `null` values never returns `true`.
 This means, that **a record won't match any other record if any of the "matchBy" fields is null!**
@@ -56,10 +57,26 @@ This means, that **a record won't match any other record if any of the "matchBy"
 The comparison is limited to equal comparison, however a callable can be passed to process the value
 before comparison:
 
-    $import->matchBy('name' => function($v) { return strtolower($v); });
+    $import->matchBy(
+        [
+            'name' => function($v) { return substr($v, 0, 1); }
+        ],
+        false    /* false for case-insensitive */
+    );
     
 Without any explicitly setting "matchBy" fields, the model's primary key is used.
-    
+
+#### Record matching internals
+To match against existing records, the "matchBy" fields are converted to query conditions
+wherever possible. But callables cannot be used in SQL.
+
+After existing records have been fetched using the "matchBy" conditions, a comparison key using 
+all "matchBy" criteria is build for each record. Here any callables passed to "matchBy"
+are invoked. At this point also case-insensitive matching normalizes all keys to lower 
+case. Models with the same comparison key are treated as "equal".
+
+If you need to adapt the comparison key for models, a custom callback for generating
+comparison keys can be set using `withComparisonKey()`.
     
 ### Updating existing records
 If existing records should be updated, the `updateIfExists()` method can be used to specify a list

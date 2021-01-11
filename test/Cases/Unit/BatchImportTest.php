@@ -1510,6 +1510,442 @@
 			$this->assertSame(4, DB::table('test_table')->count());
 		}
 
+		public function testBatchImport_insertAndUpdate_customMatchByFields_caseInsensitive() {
+
+
+			$model = new TestModel();
+
+			$toBeUpdated1   = factory(TestModel::class)->create(['a' => 'r1']);
+			$toBeUpdated2   = factory(TestModel::class)->create(['a' => 'r2']);
+			$toBeUnmodified = factory(TestModel::class)->create(['a' => 'r3']);
+
+			$testModelUpdate1  = new TestModel([
+				'a' => strtoupper($toBeUpdated1->a),
+				'b' => $toBeUpdated1->b,
+				'c' => 'd1',
+				'd' => Carbon::now(),
+			]);
+			$testModelUpdate2  = new TestModel([
+				'a' => strtoupper($toBeUpdated2->a),
+				'b' => $toBeUpdated2->b,
+				'c' => 'd2',
+				'd' => Carbon::now(),
+			]);
+			$testModelToInsert = new TestModel([
+				'a' => 'a4',
+				'b' => 'b4',
+				'c' => 'd4',
+				'd' => Carbon::now(),
+			]);
+
+
+			$import = new BatchImport($model);
+
+			$import->onInserted($this->expectedCallback(
+				1,
+				[
+					[
+						$testModelToInsert,
+					]
+				],
+				'insertCallback'
+			));
+			$import->onUpdated($this->expectedCallback(
+				1,
+				[
+					$this->callback(function ($value) use ($testModelUpdate1, $testModelUpdate2) {
+						$actualFieldCMap = [];
+						foreach ($value as $curr) {
+							$actualFieldCMap[$curr->c] = true;
+						}
+
+						$this->assertArrayHasKey($testModelUpdate1->c, $actualFieldCMap);
+						$this->assertArrayHasKey($testModelUpdate2->c, $actualFieldCMap);
+						$this->assertCount(2, $actualFieldCMap);
+
+						return true;
+					})
+				],
+				'updateCallback'
+			));
+
+			$this->assertSame($import, $import->updateIfExists(['a', 'b', 'c', 'd']));
+			$this->assertSame($import, $import->matchBy(['a', 'b'], false));
+
+			// shift time
+			Carbon::setTestNow(Carbon::now()->addHour());
+
+
+			$this->assertSame($import, $import->import([
+				$testModelUpdate1,
+				$testModelUpdate2,
+				$testModelToInsert,
+			]));
+
+
+			$this->assertDatabaseHas('test_table', [
+				'id'         => $toBeUpdated1->id,
+				'a'          => $toBeUpdated1->a,
+				'b'          => $toBeUpdated1->b,
+				'c'          => 'd1',
+				'd'          => Carbon::now()->subHour(),
+				'updated_at' => Carbon::now(),
+				'created_at' => Carbon::now()->subHour(),
+			]);
+
+			$this->assertDatabaseHas('test_table', [
+				'id'         => $toBeUpdated2->id,
+				'a'          => $toBeUpdated2->a,
+				'b'          => $toBeUpdated2->b,
+				'c'          => 'd2',
+				'd'          => Carbon::now()->subHour(),
+				'updated_at' => Carbon::now(),
+				'created_at' => Carbon::now()->subHour(),
+			]);
+
+			$this->assertDatabaseHas('test_table', $toBeUnmodified->getAttributes());
+
+			$this->assertDatabaseHas('test_table', [
+				'a'          => 'a4',
+				'b'          => 'b4',
+				'c'          => 'd4',
+				'd'          => Carbon::now()->subHour(),
+				'updated_at' => Carbon::now(),
+				'created_at' => Carbon::now(),
+			]);
+
+			$this->assertSame(4, DB::table('test_table')->count());
+		}
+
+		public function testBatchImport_insertAndUpdate_customMatchByFields_caseInsensitive_bypassModel() {
+
+
+			$model = new TestModel();
+
+			$toBeUpdated1   = factory(TestModel::class)->create(['a' => 'r1']);
+			$toBeUpdated2   = factory(TestModel::class)->create(['a' => 'r1']);
+			$toBeUnmodified = factory(TestModel::class)->create(['a' => 'r1']);
+
+			$dataUpdate1 = [
+				'a' => strtoupper($toBeUpdated1->a),
+				'b' => $toBeUpdated1->b,
+				'c' => 'd1',
+				'd' => Carbon::now(),
+			];
+			$dataUpdate2 = [
+				'a' => strtoupper($toBeUpdated2->a),
+				'b' => $toBeUpdated2->b,
+				'c' => 'd2',
+				'd' => Carbon::now(),
+			];
+			$dataInsert  = [
+				'a' => 'a4',
+				'b' => 'b4',
+				'c' => 'd4',
+				'd' => Carbon::now(),
+			];
+
+
+			$import = new BatchImport($model);
+
+			$import->onInserted($this->expectedCallback(
+				1,
+				[
+					$this->itemsSubsetMatchesCallback([
+						$dataInsert,
+					])
+				],
+				'insertCallback'
+			));
+			$import->onUpdated($this->expectedCallback(
+				1,
+				[
+					$this->callback(function ($value) use ($dataUpdate1, $dataUpdate2) {
+						$actualFieldCMap = [];
+						foreach ($value as $curr) {
+							$actualFieldCMap[$curr['c']] = true;
+						}
+
+						$this->assertArrayHasKey($dataUpdate1['c'], $actualFieldCMap);
+						$this->assertArrayHasKey($dataUpdate2['c'], $actualFieldCMap);
+						$this->assertCount(2, $actualFieldCMap);
+
+						return true;
+					})
+				],
+				'updateCallback'
+			));
+
+			$this->assertSame($import, $import->updateIfExists(['a', 'b', 'c', 'd']));
+			$this->assertSame($import, $import->matchBy(['a', 'b'], false));
+
+			// shift time
+			Carbon::setTestNow(Carbon::now()->addHour());
+
+			$this->assertSame($import, $import->bypassModel());
+
+			$this->assertSame($import, $import->import([
+				$dataUpdate1,
+				$dataUpdate2,
+				$dataInsert,
+			]));
+
+
+			$this->assertDatabaseHas('test_table', [
+				'id'         => $toBeUpdated1->id,
+				'a'          => $toBeUpdated1->a,
+				'b'          => $toBeUpdated1->b,
+				'c'          => 'd1',
+				'd'          => Carbon::now()->subHour(),
+				'updated_at' => Carbon::now(),
+				'created_at' => Carbon::now()->subHour(),
+			]);
+
+			$this->assertDatabaseHas('test_table', [
+				'id'         => $toBeUpdated2->id,
+				'a'          => $toBeUpdated2->a,
+				'b'          => $toBeUpdated2->b,
+				'c'          => 'd2',
+				'd'          => Carbon::now()->subHour(),
+				'updated_at' => Carbon::now(),
+				'created_at' => Carbon::now()->subHour(),
+			]);
+
+			$this->assertDatabaseHas('test_table', $toBeUnmodified->getAttributes());
+
+			$this->assertDatabaseHas('test_table', [
+				'a'          => 'a4',
+				'b'          => 'b4',
+				'c'          => 'd4',
+				'd'          => Carbon::now()->subHour(),
+				'updated_at' => Carbon::now(),
+				'created_at' => Carbon::now(),
+			]);
+
+			$this->assertSame(4, DB::table('test_table')->count());
+		}
+
+		public function testBatchImport_insertAndUpdate_customComparisonKey_caseInsensitive() {
+
+
+			$model = new TestModel();
+
+			$toBeUpdated1   = factory(TestModel::class)->create(['a' => 'r1']);
+			$toBeUpdated2   = factory(TestModel::class)->create(['a' => 'r2']);
+			$toBeUnmodified = factory(TestModel::class)->create(['a' => 'r3']);
+
+			$testModelUpdate1  = new TestModel([
+				'a' => strtoupper($toBeUpdated1->a),
+				'b' => $toBeUpdated1->b,
+				'c' => 'd1',
+				'd' => Carbon::now(),
+			]);
+			$testModelUpdate2  = new TestModel([
+				'a' => strtoupper($toBeUpdated2->a),
+				'b' => $toBeUpdated2->b,
+				'c' => 'd2',
+				'd' => Carbon::now(),
+			]);
+			$testModelToInsert = new TestModel([
+				'a' => 'a4',
+				'b' => 'b4',
+				'c' => 'd4',
+				'd' => Carbon::now(),
+			]);
+
+
+			$import = new BatchImport($model);
+
+			$import->onInserted($this->expectedCallback(
+				1,
+				[
+					[
+						$testModelToInsert,
+					]
+				],
+				'insertCallback'
+			));
+			$import->onUpdated($this->expectedCallback(
+				1,
+				[
+					$this->callback(function ($value) use ($testModelUpdate1, $testModelUpdate2) {
+						$actualFieldCMap = [];
+						foreach ($value as $curr) {
+							$actualFieldCMap[$curr->c] = true;
+						}
+
+						$this->assertArrayHasKey($testModelUpdate1->c, $actualFieldCMap);
+						$this->assertArrayHasKey($testModelUpdate2->c, $actualFieldCMap);
+						$this->assertCount(2, $actualFieldCMap);
+
+						return true;
+					})
+				],
+				'updateCallback'
+			));
+
+			$this->assertSame($import, $import->updateIfExists(['a', 'b', 'c', 'd']));
+			$this->assertSame($import, $import->matchBy(['a', 'b']));
+			$this->assertSame($import, $import->withComparisonKey(function ($model) {
+				return strtolower($model['a']) . $model['b'];
+			}));
+
+			// shift time
+			Carbon::setTestNow(Carbon::now()->addHour());
+
+
+			$this->assertSame($import, $import->import([
+				$testModelUpdate1,
+				$testModelUpdate2,
+				$testModelToInsert,
+			]));
+
+
+			$this->assertDatabaseHas('test_table', [
+				'id'         => $toBeUpdated1->id,
+				'a'          => $toBeUpdated1->a,
+				'b'          => $toBeUpdated1->b,
+				'c'          => 'd1',
+				'd'          => Carbon::now()->subHour(),
+				'updated_at' => Carbon::now(),
+				'created_at' => Carbon::now()->subHour(),
+			]);
+
+			$this->assertDatabaseHas('test_table', [
+				'id'         => $toBeUpdated2->id,
+				'a'          => $toBeUpdated2->a,
+				'b'          => $toBeUpdated2->b,
+				'c'          => 'd2',
+				'd'          => Carbon::now()->subHour(),
+				'updated_at' => Carbon::now(),
+				'created_at' => Carbon::now()->subHour(),
+			]);
+
+			$this->assertDatabaseHas('test_table', $toBeUnmodified->getAttributes());
+
+			$this->assertDatabaseHas('test_table', [
+				'a'          => 'a4',
+				'b'          => 'b4',
+				'c'          => 'd4',
+				'd'          => Carbon::now()->subHour(),
+				'updated_at' => Carbon::now(),
+				'created_at' => Carbon::now(),
+			]);
+
+			$this->assertSame(4, DB::table('test_table')->count());
+		}
+
+		public function testBatchImport_insertAndUpdate_customMatchByFields_customComparisonKey_bypassModel() {
+
+
+			$model = new TestModel();
+
+			$toBeUpdated1   = factory(TestModel::class)->create(['a' => 'r1']);
+			$toBeUpdated2   = factory(TestModel::class)->create(['a' => 'r1']);
+			$toBeUnmodified = factory(TestModel::class)->create(['a' => 'r1']);
+
+			$dataUpdate1 = [
+				'a' => strtoupper($toBeUpdated1->a),
+				'b' => $toBeUpdated1->b,
+				'c' => 'd1',
+				'd' => Carbon::now(),
+			];
+			$dataUpdate2 = [
+				'a' => strtoupper($toBeUpdated2->a),
+				'b' => $toBeUpdated2->b,
+				'c' => 'd2',
+				'd' => Carbon::now(),
+			];
+			$dataInsert  = [
+				'a' => 'a4',
+				'b' => 'b4',
+				'c' => 'd4',
+				'd' => Carbon::now(),
+			];
+
+
+			$import = new BatchImport($model);
+
+			$import->onInserted($this->expectedCallback(
+				1,
+				[
+					$this->itemsSubsetMatchesCallback([
+						$dataInsert,
+					])
+				],
+				'insertCallback'
+			));
+			$import->onUpdated($this->expectedCallback(
+				1,
+				[
+					$this->callback(function ($value) use ($dataUpdate1, $dataUpdate2) {
+						$actualFieldCMap = [];
+						foreach ($value as $curr) {
+							$actualFieldCMap[$curr['c']] = true;
+						}
+
+						$this->assertArrayHasKey($dataUpdate1['c'], $actualFieldCMap);
+						$this->assertArrayHasKey($dataUpdate2['c'], $actualFieldCMap);
+						$this->assertCount(2, $actualFieldCMap);
+
+						return true;
+					})
+				],
+				'updateCallback'
+			));
+
+			$this->assertSame($import, $import->updateIfExists(['a', 'b', 'c', 'd']));
+			$this->assertSame($import, $import->matchBy(['a', 'b']));
+			$this->assertSame($import, $import->withComparisonKey(function ($model) {
+				return strtolower($model['a']) . $model['b'];
+			}));
+
+			// shift time
+			Carbon::setTestNow(Carbon::now()->addHour());
+
+			$this->assertSame($import, $import->bypassModel());
+
+			$this->assertSame($import, $import->import([
+				$dataUpdate1,
+				$dataUpdate2,
+				$dataInsert,
+			]));
+
+
+			$this->assertDatabaseHas('test_table', [
+				'id'         => $toBeUpdated1->id,
+				'a'          => $toBeUpdated1->a,
+				'b'          => $toBeUpdated1->b,
+				'c'          => 'd1',
+				'd'          => Carbon::now()->subHour(),
+				'updated_at' => Carbon::now(),
+				'created_at' => Carbon::now()->subHour(),
+			]);
+
+			$this->assertDatabaseHas('test_table', [
+				'id'         => $toBeUpdated2->id,
+				'a'          => $toBeUpdated2->a,
+				'b'          => $toBeUpdated2->b,
+				'c'          => 'd2',
+				'd'          => Carbon::now()->subHour(),
+				'updated_at' => Carbon::now(),
+				'created_at' => Carbon::now()->subHour(),
+			]);
+
+			$this->assertDatabaseHas('test_table', $toBeUnmodified->getAttributes());
+
+			$this->assertDatabaseHas('test_table', [
+				'a'          => 'a4',
+				'b'          => 'b4',
+				'c'          => 'd4',
+				'd'          => Carbon::now()->subHour(),
+				'updated_at' => Carbon::now(),
+				'created_at' => Carbon::now(),
+			]);
+
+			$this->assertSame(4, DB::table('test_table')->count());
+		}
+
 		public function testBatchImport_insertAndUpdate_customMatchByFields_singlePassedAsString() {
 
 

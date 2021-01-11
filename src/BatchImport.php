@@ -8,6 +8,7 @@
 	use Illuminate\Database\Eloquent\Builder;
 	use Illuminate\Database\Eloquent\Model;
 	use Illuminate\Support\Arr;
+	use Illuminate\Support\Str;
 	use InvalidArgumentException;
 	use MehrIt\Buffer\FlushingBuffer;
 	use MehrIt\LaraDbBatchImport\Concerns\BatchImportInfo;
@@ -43,6 +44,10 @@
 
 		protected $rawComparators = [];
 
+		protected $matchCaseSensitive = false;
+
+		protected $comparisonKeyBuilder = null;
+
 		/**
 		 * @var TransactionManager
 		 */
@@ -68,9 +73,10 @@
 		/**
 		 * Sets the fields which must match to treat records as identical. Attention: following SQL null comparison behaviour, a null value in any of these fields will never match any other field value (not even another null value)
 		 * @param string[]|callable[]|string $fields The fields. If a callable is passed, it will be used to process the field value before comparison. In that case the array key is interpreted as field name
+		 * @param bool $caseSensitive True if matching is case sensitive. Else false.
 		 * @return $this
 		 */
-		public function matchBy($fields): BatchImport {
+		public function matchBy($fields, bool $caseSensitive = true): BatchImport {
 
 			$fields = Arr::wrap($fields);
 
@@ -79,7 +85,19 @@
 
 			$this->assertFieldList($fields);
 
-			$this->matchBy = $fields;
+			$this->matchBy            = $fields;
+			$this->matchCaseSensitive = $caseSensitive;
+
+			return $this;
+		}
+
+		/**
+		 * Sets the function which is used to build the comparison key for a model
+		 * @param callable $comparisonKeyBuilder The callback. Receives the model or an array with model data
+		 * @return $this
+		 */
+		public function withComparisonKey(callable $comparisonKeyBuilder): BatchImport {
+			$this->comparisonKeyBuilder = $comparisonKeyBuilder;
 
 			return $this;
 		}
@@ -567,6 +585,10 @@
 		 */
 		protected function comparisonKey($record) {
 
+			// use custom comparison key builder, when specified
+			if ($this->comparisonKeyBuilder)
+				return call_user_func($this->comparisonKeyBuilder, $record);
+
 			$values = [];
 
 			foreach($this->matchBy as $key => $field) {
@@ -579,6 +601,10 @@
 				// if we have a null value, the record is always unique (due to SQL null comparision logic) so we return null
 				if ($currValue === null)
 					return null;
+
+				// convert to lower, if case insensitive matching
+				if (!$this->matchCaseSensitive)
+					$currValue = Str::lower($currValue);
 
 				// escape field separator and add to values
 				$values[] = str_replace(['~', '|'], ['~~', '~'], (string)$currValue);
