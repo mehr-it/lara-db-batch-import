@@ -15,6 +15,7 @@
 	use MehrItLaraDbBatchImportTest\Model\TestModelWithBatch;
 	use MehrItLaraDbBatchImportTest\Model\TestModelWithoutPrimaryKey;
 	use MehrItLaraDbBatchImportTest\Model\TestModelWithSetMutator;
+	use MehrItLaraDbBatchImportTest\Model\TestModelWithSoftDelete;
 
 	class BatchImportTest extends TestCase
 	{
@@ -4838,5 +4839,65 @@
 			]);
 
 			$this->assertSame(2, DB::table('test_table')->count());
+		}
+		
+		public function testBatchImport_tapModelQuery() {
+
+
+			$model = new TestModelWithSoftDelete();
+
+			$testModel1 = [
+				'a' => 'a1',
+				'b' => 'b1',
+				'c' => 'd1',
+				'd' => Carbon::now(),
+				'deleted_at' => null,
+			];
+			
+
+			$existing1 = factory(TestModelWithSoftDelete::class)->state('deleted')->create([
+				'a' => 'a1',
+				'b' => 'existing'
+			]);
+			
+
+
+			$import = new BatchImport($model);
+			
+			$import->updateIfExists(['b', 'c', 'd', 'deleted_at']);
+			$import->onInsertedOrUpdated($this->expectedCallback(
+				1,
+				[
+					$this->itemsSubsetMatchesCallback([$testModel1]),
+				],
+				'insertOrUpdateCallback'
+			));
+			$import->matchBy(['a']);
+			
+			// here we modify the query, so the existing record does not match and a new record is inserted
+			$this->assertSame($import, $import->tapModelQuery(function($query) {
+				/** @var Builder $query */
+				return $query->withTrashed();
+			}));
+
+			$import->bypassModel();
+			
+			$this->assertSame($import, $import->import([
+				$testModel1,
+			]));
+			
+			
+			$this->assertSame(1, DB::table('test_table')->count());
+
+			$this->assertDatabaseHas('test_table', [
+				'id' => $existing1->id,
+				'a'          => 'a1',
+				'b'          => 'b1',
+				'c'          => 'd1',
+				'd'          => Carbon::now(),
+				'deleted_at' => null,
+			]);
+			
+
 		}
 	}

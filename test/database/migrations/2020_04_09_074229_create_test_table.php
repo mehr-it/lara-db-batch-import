@@ -26,6 +26,7 @@
 				$table->string('c', 255)->nullable();
 				$table->dateTime('d')->nullable();
 				$table->bigInteger('last_batch_id')->nullable();
+				$table->softDeletes();
 				$table->timestamps();
 			});
 		}

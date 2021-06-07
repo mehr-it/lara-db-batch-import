@@ -78,15 +78,22 @@ case. Models with the same comparison key are treated as "equal".
 If you need to adapt the comparison key for models, a custom callback for generating
 comparison keys can be set using `withComparisonKey()`.
 
-#### Modify match query
-Sometimes you might want to modify the match query before it is executed. Imagine you are using
-soft deletes and want trashed models to be matched. Use the `tapMatchQuery()` method 
+#### Modify model query
+Sometimes you might want to modify the model query. Imagine you are using
+soft deletes and want trashed models to be included. Use the `tapModelQuery()` method 
 for such case:
 
-    $import->tapMatchQuery(function($query){
+    $import->tapModelQuery(function($query){
         return $query->withTrashed();
     });
-    
+
+    // when modifying the model query, usage of bypassModel() is mandatory
+    $import->bypassModel();
+
+**Import** The model query can only be modified when `bypassModel() `
+is used!
+
+
 ### Updating existing records
 If existing records should be updated, the `updateIfExists()` method can be used to specify a list
 of fields to update in case of existence.
