@@ -47,6 +47,8 @@
 		protected $matchCaseSensitive = false;
 
 		protected $comparisonKeyBuilder = null;
+		
+		protected $tapMatchQueryCallback;
 
 		/**
 		 * @var TransactionManager
@@ -236,6 +238,17 @@
 
 			$this->bypassModel = $value;
 
+			return $this;
+		}
+
+		/**
+		 * Sets a callback which can modify the query which fetches existing models. This is intended for eg. modify scopes such as "withTrashed"
+		 * @param callable $callback The callback which retrieves the query as first argument. The callback must return the query instance.
+		 * @return $this
+		 */
+		public function tapMatchQuery(callable $callback) : BatchImport {
+			$this->tapMatchQueryCallback = $callback;
+			
 			return $this;
 		}
 
@@ -559,6 +572,7 @@
 
 			/** @var Builder $query */
 			$query = $this->existingChunkWhere($this->callModelStatic('query'), $models)
+				->when($this->tapMatchQueryCallback, $this->tapMatchQueryCallback)
 				->lockForUpdate();
 
 			// use query builder if to ignore casts

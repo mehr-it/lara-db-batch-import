@@ -9,6 +9,7 @@
 	use \DB;
 	use InvalidArgumentException;
 	use MehrIt\LaraDbBatchImport\BatchImport;
+	use MehrIt\LaraDbExt\Eloquent\Builder;
 	use MehrItLaraDbBatchImportTest\Cases\TestCase;
 	use MehrItLaraDbBatchImportTest\Model\TestModel;
 	use MehrItLaraDbBatchImportTest\Model\TestModelWithBatch;
@@ -4766,5 +4767,76 @@
 			]);
 
 			$this->assertSame(5, DB::table('test_table')->count());
+		}
+
+
+		public function testBatchImport_tapMatchQuery() {
+
+
+			$model = new TestModel();
+
+			$testModel1 = new TestModel([
+				'a' => 'a1',
+				'b' => 'b1',
+				'c' => 'd1',
+				'd' => Carbon::now(),
+			]);
+
+			$existing = factory(TestModelWithBatch::class)->create([
+				'a' => 'a1',
+				'b' => 'existing'
+			]);
+
+
+			$import = new BatchImport($model);
+
+			$import->onInserted($this->expectedCallback(
+				1,
+				[
+					[
+						$testModel1,
+					],
+				],
+				'insertCallback'
+			));
+			$import->onUpdated($this->expectedCallback(0, [], 'updateCallback'));
+			$import->onInsertedOrUpdated($this->expectedCallback(
+				1,
+				[
+					[
+						$testModel1,
+					],
+				],
+				'insertOrUpdateCallback'
+			));
+			$import->matchBy('a');
+			
+			// here we modify the query, so the existing record does not match and a new record is inserted
+			$this->assertSame($import, $import->tapMatchQuery(function($query) {
+				/** @var Builder $query */
+				return $query->whereRaw('1=2');
+			}));
+
+
+			$this->assertSame($import, $import->import([
+				$testModel1,
+			]));
+
+
+			$this->assertDatabaseHas('test_table', [
+				'a'          => 'a1',
+				'b'          => 'b1',
+				'c'          => 'd1',
+				'd'          => Carbon::now(),
+				'updated_at' => Carbon::now(),
+				'created_at' => Carbon::now(),
+			]);
+
+			$this->assertDatabaseHas('test_table', [
+				'id' => $existing->id,
+				'a'          => 'a1',
+			]);
+
+			$this->assertSame(2, DB::table('test_table')->count());
 		}
 	}
