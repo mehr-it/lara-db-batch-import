@@ -103,6 +103,87 @@
 
 			$this->assertSame(2, DB::table('test_table')->count());
 		}
+		
+		public function testBatchImport_insertOnly_beforeInsert() {
+
+
+			$model = new TestModel();
+
+			$testModel1 = new TestModel([
+				'a' => 'a1',
+				'b' => 'b1',
+				'c' => 'd1',
+				'd' => Carbon::now(),
+			]);
+			$testModel2 = new TestModel([
+				'a' => 'a2',
+				'b' => 'b2',
+				'c' => 'd2',
+				'd' => Carbon::now(),
+			]);
+
+
+			$import = new BatchImport($model);
+			
+			$this->assertSame($import, $import->beforeInsert(function(array $models) {
+				foreach($models as $curr) {
+					$this->assertInstanceOf(TestModel::class, $curr);
+					$curr->c .= '-modified';
+				}
+				
+				return $models;
+			}));
+
+			$import->onInserted($this->expectedCallback(
+				1,
+				[
+					[
+						$testModel1,
+						$testModel2,
+					],
+				],
+				'insertCallback'
+			));
+			$import->onUpdated($this->expectedCallback(0, [], 'updateCallback'));
+			$import->onInsertedOrUpdated($this->expectedCallback(
+				1,
+				[
+					[
+						$testModel1,
+						$testModel2,
+					],
+				],
+				'insertOrUpdateCallback'
+			));
+
+
+			$this->assertSame($import, $import->import([
+				$testModel1,
+				$testModel2,
+			]));
+
+
+
+			$this->assertDatabaseHas('test_table', [
+				'a'          => 'a1',
+				'b'          => 'b1',
+				'c'          => 'd1-modified',
+				'd'          => Carbon::now(),
+				'updated_at' => Carbon::now(),
+				'created_at' => Carbon::now(),
+			]);
+
+			$this->assertDatabaseHas('test_table', [
+				'a'          => 'a2',
+				'b'          => 'b2',
+				'c'          => 'd2-modified',
+				'd'          => Carbon::now(),
+				'updated_at' => Carbon::now(),
+				'created_at' => Carbon::now(),
+			]);
+
+			$this->assertSame(2, DB::table('test_table')->count());
+		}
 
 		public function testBatchImport_insertOnly_bypassModel() {
 
@@ -170,6 +251,88 @@
 				'a'          => 'a2',
 				'b'          => 'b2',
 				'c'          => 'd2',
+				'd'          => Carbon::now(),
+				'updated_at' => Carbon::now(),
+				'created_at' => Carbon::now(),
+			]);
+
+			$this->assertSame(2, DB::table('test_table')->count());
+		}
+		
+		public function testBatchImport_insertOnly_bypassModel_beforeInsert() {
+
+
+			$model = new TestModel();
+
+			$data1 = [
+				'a' => 'a1',
+				'b' => 'b1',
+				'c' => 'd1',
+				'd' => Carbon::now(),
+			];
+			$data2 =[
+				'a' => 'a2',
+				'b' => 'b2',
+				'c' => 'd2',
+				'd' => Carbon::now(),
+			];
+
+
+			$import = new BatchImport($model);
+
+			$this->assertSame($import, $import->beforeInsert(function (array $models) {
+				foreach ($models as &$curr) {
+					$this->assertIsArray($curr);
+					$curr['c'] .= '-modified';
+				}
+
+				return $models;
+			}));
+			$import->onInserted($this->expectedCallback(
+				1,
+				[
+					$this->itemsSubsetMatchesCallback([
+						array_merge($data1, ['c' => 'd1-modified']),
+						array_merge($data2, ['c' => 'd2-modified']),
+					]),
+				],
+				'insertCallback'
+			));
+			$import->onUpdated($this->expectedCallback(0, [], 'updateCallback'));
+			$import->onInsertedOrUpdated($this->expectedCallback(
+				1,
+				[
+					$this->itemsSubsetMatchesCallback([
+						array_merge($data1, ['c' => 'd1-modified']),
+						array_merge($data2, ['c' => 'd2-modified']),
+					]),
+				],
+				'insertOrUpdateCallback'
+			));
+
+			$this->assertSame($import, $import->bypassModel());
+
+
+			$this->assertSame($import, $import->import([
+				$data1,
+				$data2,
+			]));
+
+
+
+			$this->assertDatabaseHas('test_table', [
+				'a'          => 'a1',
+				'b'          => 'b1',
+				'c'          => 'd1-modified',
+				'd'          => Carbon::now(),
+				'updated_at' => Carbon::now(),
+				'created_at' => Carbon::now(),
+			]);
+
+			$this->assertDatabaseHas('test_table', [
+				'a'          => 'a2',
+				'b'          => 'b2',
+				'c'          => 'd2-modified',
 				'd'          => Carbon::now(),
 				'updated_at' => Carbon::now(),
 				'created_at' => Carbon::now(),

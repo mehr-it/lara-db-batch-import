@@ -15,6 +15,7 @@
 	use MehrIt\LaraTransactions\TransactionManager;
 	use RuntimeException;
 	use Throwable;
+	use Traversable;
 
 	class BatchImport
 	{
@@ -51,6 +52,11 @@
 		protected $tapMatchQueryCallback;
 
 		protected $tapModelQueryCallback;
+
+		/**
+		 * @var callback|null 
+		 */
+		protected $beforeInsert = null;
 
 		/**
 		 * @var TransactionManager
@@ -263,6 +269,17 @@
 		public function tapModelQuery(callable $callback): BatchImport {
 			$this->tapModelQueryCallback = $callback;
 
+			return $this;
+		}
+
+		/**
+		 * Adds a callback which allows to modify the records to insert
+		 * @param callable $callback The callback
+		 * @return $this
+		 */
+		public function beforeInsert(callable $callback): BatchImport {
+			$this->beforeInsert = $callback;
+			
 			return $this;
 		}
 
@@ -503,9 +520,19 @@
 								->update([$batchIdField => $batchId]);
 						}
 					}
+					
+					if ($toInsert && $this->beforeInsert) {
+						$toInsert = call_user_func($this->beforeInsert, $toInsert);
+						if (!is_array($toInsert) && !($toInsert instanceof Traversable)) {
+							throw new RuntimeException('The beforeInsert() callback must return an iterable.');
+						}
+					}
+						
 
 					// insert new records
 					if ($toInsert) {
+						
+						
 
 						if (!$this->bypassModel) {
 							// use model insert
