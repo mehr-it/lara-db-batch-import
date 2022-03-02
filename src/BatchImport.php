@@ -48,13 +48,13 @@
 		protected $matchCaseSensitive = false;
 
 		protected $comparisonKeyBuilder = null;
-		
+
 		protected $tapMatchQueryCallback;
 
 		protected $tapModelQueryCallback;
 
 		/**
-		 * @var callback|null 
+		 * @var callback|null
 		 */
 		protected $beforeInsert = null;
 
@@ -253,11 +253,11 @@
 		 * Sets a callback which can modify the query which fetches existing models. This is intended for eg. modify scopes such as "withTrashed"
 		 * @param callable $callback The callback which retrieves the query as first argument. The callback must return the query instance.
 		 * @return $this
-		 * @deprecated 
+		 * @deprecated
 		 */
-		public function tapMatchQuery(callable $callback) : BatchImport {
+		public function tapMatchQuery(callable $callback): BatchImport {
 			$this->tapMatchQueryCallback = $callback;
-			
+
 			return $this;
 		}
 
@@ -279,7 +279,7 @@
 		 */
 		public function beforeInsert(callable $callback): BatchImport {
 			$this->beforeInsert = $callback;
-			
+
 			return $this;
 		}
 
@@ -295,7 +295,7 @@
 			// export last batch id
 			$lastBatchId = $this->lastBatchId;
 
-			$cb = function() use ($importBuffer, $insertCallbackBuffer, $updateCallbackBuffer, $insertOrUpdateCallbackBuffer, $lastBatchId) {
+			$cb = function () use ($importBuffer, $insertCallbackBuffer, $updateCallbackBuffer, $insertOrUpdateCallbackBuffer, $lastBatchId) {
 
 				// flush buffer
 				$importBuffer->flush();
@@ -333,7 +333,7 @@
 
 			$bypassModel = $this->bypassModel;
 
-			$updateFields = $this->updateFields;
+			$updateFields     = $this->updateFields;
 			$updateFieldNames = $this->fieldNames($updateFields);
 
 			$updatedAtField = null;
@@ -346,20 +346,20 @@
 			$updateCallbackWhenFields    = $this->updateCallbackWhenFields;
 			$updateCallbackWhenFieldsMap = array_fill_keys($this->updateCallbackWhenFields, true);
 
-			$updateCallbackBuffer = new FlushingBuffer($this->callbackBufferSize, function($records) {
-				foreach($this->updateCallbacks as $callback) {
+			$updateCallbackBuffer = new FlushingBuffer($this->callbackBufferSize, function ($records) {
+				foreach ($this->updateCallbacks as $callback) {
 					call_user_func($callback, $records);
 				}
 			});
 
-			$insertCallbackBuffer = new FlushingBuffer($this->callbackBufferSize, function($records) {
-				foreach($this->insertCallbacks as $callback) {
+			$insertCallbackBuffer = new FlushingBuffer($this->callbackBufferSize, function ($records) {
+				foreach ($this->insertCallbacks as $callback) {
 					call_user_func($callback, $records);
 				}
 			});
 
-			$insertOrUpdateCallbackBuffer = new FlushingBuffer($this->callbackBufferSize, function($records) {
-				foreach($this->insertOrUpdateCallbacks as $callback) {
+			$insertOrUpdateCallbackBuffer = new FlushingBuffer($this->callbackBufferSize, function ($records) {
+				foreach ($this->insertOrUpdateCallbacks as $callback) {
 					call_user_func($callback, $records);
 				}
 			});
@@ -367,10 +367,10 @@
 			$this->lastBatchId = $batchId = $this->batchId();
 			$batchIdField      = $this->batchIdField();
 
-			$importBuffer = new FlushingBuffer($this->bufferSize, function($models) use ($updateFieldNames, $updateCallbackBuffer, $insertCallbackBuffer, $insertOrUpdateCallbackBuffer, $batchId, $batchIdField, $updateCallbackWhenFields, $updateCallbackWhenFieldsMap, $updateFields, $keyName, $updatedAtField, $createdAtField, $bypassModel) {
+			$importBuffer = new FlushingBuffer($this->bufferSize, function ($models) use ($updateFieldNames, $updateCallbackBuffer, $insertCallbackBuffer, $insertOrUpdateCallbackBuffer, $batchId, $batchIdField, $updateCallbackWhenFields, $updateCallbackWhenFieldsMap, $updateFields, $keyName, $updatedAtField, $createdAtField, $bypassModel) {
 				/** @var Model[]|array[] $models */
 
-				$this->withTransaction(function() use ($models, $updateFieldNames, $updateCallbackBuffer, $insertCallbackBuffer, $insertOrUpdateCallbackBuffer, $batchId, $batchIdField, $updateCallbackWhenFields, $updateCallbackWhenFieldsMap, $updateFields, $keyName, $updatedAtField, $createdAtField, $bypassModel) {
+				$this->withTransaction(function () use ($models, $updateFieldNames, $updateCallbackBuffer, $insertCallbackBuffer, $insertOrUpdateCallbackBuffer, $batchId, $batchIdField, $updateCallbackWhenFields, $updateCallbackWhenFieldsMap, $updateFields, $keyName, $updatedAtField, $createdAtField, $bypassModel) {
 
 					$dbData = $this->loadExistingRecords($models);
 
@@ -399,6 +399,8 @@
 
 							$isDirty                     = false;
 							$shouldInvokeUpdateCallbacks = false;
+							$existingRecordCopy          = null;
+
 
 							foreach ($updateFields as $key => $field) {
 
@@ -407,8 +409,21 @@
 									$value = $record[$field] ?? null;
 								}
 								else {
+									// create a copy of the existing record which does not mutate while applying modifications
+									if (!$existingRecordCopy) {
+										if ($this->bypassModel) {
+											$existingRecordCopy = $existingRecord;
+										}
+										else {
+											$modelCls = get_class($this->model());
+
+											$existingRecordCopy = new $modelCls;
+											$existingRecordCopy->setRawAttributes($existingRecord->getAttributes());
+										}
+									}
+
 									$value = is_callable($field) ?
-										call_user_func($field, ($record[$key] ?? null), $existingRecord, $record, $field) :
+										call_user_func($field, ($record[$key] ?? null), $existingRecordCopy, $record, $field) :
 										$field;
 								}
 
@@ -513,26 +528,25 @@
 
 					// update batch id for unmodified records
 					if ($toUpdateBatchIdFor) {
-						foreach(array_chunk($toUpdateBatchIdFor, $this->bufferSize) as $currKeys) {
+						foreach (array_chunk($toUpdateBatchIdFor, $this->bufferSize) as $currKeys) {
 							$this->modelQuery()
 								->whereIn($keyName, $currKeys)
 								->toBase()
 								->update([$batchIdField => $batchId]);
 						}
 					}
-					
+
 					if ($toInsert && $this->beforeInsert) {
 						$toInsert = call_user_func($this->beforeInsert, $toInsert);
 						if (!is_array($toInsert) && !($toInsert instanceof Traversable)) {
 							throw new RuntimeException('The beforeInsert() callback must return an iterable.');
 						}
 					}
-						
+
 
 					// insert new records
 					if ($toInsert) {
-						
-						
+
 
 						if (!$this->bypassModel) {
 							// use model insert
@@ -576,7 +590,7 @@
 		protected function fieldNames(array $fieldMappings) {
 			$ret = [];
 
-			foreach($fieldMappings as $key => $field) {
+			foreach ($fieldMappings as $key => $field) {
 				$ret[] = (is_int($key) ? $field : $key);
 			}
 
@@ -611,22 +625,21 @@
 		 */
 		protected function loadExistingRecords(array $models): array {
 
-			$ret = [];
+			$ret         = [];
 			$bypassModel = $this->bypassModel;
 
 			/** @var Builder $query */
 			$query = $this->existingChunkWhere($this->modelQuery(), $models)
-				
+
 				// this is deprecated and should not be used
 				->when($this->tapMatchQueryCallback, $this->tapMatchQueryCallback)
-				
 				->lockForUpdate();
 
 			// use query builder if to ignore casts
 			if ($bypassModel)
 				$query = $query->toBase();
 
-			foreach($query->get() as $curr) {
+			foreach ($query->get() as $curr) {
 
 				// convert stdClass to array
 				if ($bypassModel)
@@ -652,7 +665,7 @@
 
 			$values = [];
 
-			foreach($this->matchBy as $key => $field) {
+			foreach ($this->matchBy as $key => $field) {
 
 				$currValue = is_int($key) ?
 					($record[$field] ?? null) :
@@ -682,7 +695,7 @@
 		 */
 		protected function existingChunkWhere($query, array $models) {
 
-			foreach($this->matchBy as $key => $field) {
+			foreach ($this->matchBy as $key => $field) {
 
 				// Skip associative match definitions. They are used for filters which cannot be applied in SQL, so we cannot use them as conditions)
 				if (!is_int($key))
@@ -722,14 +735,14 @@
 
 			// if to match null values, we have to  use 'or ... is null' due to null treatment in SQL comparision
 			if ($matchNull) {
-				return $query->whereNested(function($query) use ($field, $values) {
+				return $query->whereNested(function ($query) use ($field, $values) {
 					$this
 						->whereInValues($query, $field, $values)
 						->orWhereNull($field);
 				});
 			}
 
-			switch(count($values)) {
+			switch (count($values)) {
 				case 0:
 					return $query;
 
